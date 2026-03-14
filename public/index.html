@@ -1,8 +1,523 @@
-bash
-cat /home/claude/aria-v2/public/index.html | head -5
-Output
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ARIA">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1612">
+<meta name="description" content="Your AI-powered admin assistant for emails, scheduling, and summaries.">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.svg">
+<title>ARIA — AI Admin Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --cream:#f9f6f1;--cream2:#f3ede4;--cream3:#ebe2d5;
+  --ink:#1a1612;--ink2:#3d3530;--ink3:#6b5e56;--ink4:#9b8c84;
+  --gold:#c4923a;--gold-light:#f0d9a8;--gold-glow:rgba(196,146,58,0.12);
+  --teal:#2d7a6b;--rose:#9b3a4a;
+  --green:#16a34a;--red:#dc2626;
+  --r:14px;--rs:8px;
+  --sh:0 2px 8px rgba(26,22,18,0.08);
+}
+html,body{margin:0;padding:0;-webkit-tap-highlight-color:transparent;width:100%;height:100%}
+body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);display:flex;flex-direction:column;position:fixed;inset:0;overflow:hidden}
+#app{display:none;flex-direction:column;position:fixed;inset:0;overflow:hidden}
+#app.on{display:flex}
+.msgs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.iarea{flex-shrink:0;padding:9px 12px;background:white;border-top:1px solid var(--cream3);padding-bottom:max(12px,env(safe-area-inset-bottom))}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:var(--cream3);border-radius:10px}
+#authScreen{
+  position:fixed;inset:0;background:var(--ink);z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;
+}
+.auth-card{
+  background:white;border-radius:22px;padding:32px 24px;
+  width:100%;max-width:380px;box-shadow:0 24px 64px rgba(0,0,0,0.35);
+}
+.auth-brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:26px}
+.auth-icon{
+  width:40px;height:40px;background:linear-gradient(135deg,#c4923a,#e8b060);
+  border-radius:11px;display:flex;align-items:center;justify-content:center;
+  font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--ink);
+}
+.auth-wordmark{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:300;
+  color:var(--ink);letter-spacing:3px;text-transform:uppercase}
+.auth-tabs{display:flex;background:var(--cream2);border-radius:10px;padding:3px;gap:3px;margin-bottom:22px}
+.auth-tab{
+  flex:1;padding:9px;border-radius:8px;border:none;background:transparent;
+  font-family:inherit;font-size:13px;font-weight:500;color:var(--ink4);cursor:pointer;transition:all .2s;
+}
+.auth-tab.active{background:white;color:var(--ink);box-shadow:var(--sh)}
+.field-label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);margin-bottom:6px}
+.field{
+  width:100%;padding:12px 14px;border:1.5px solid var(--cream3);border-radius:var(--rs);
+  font-family:inherit;font-size:14px;color:var(--ink);background:var(--cream);
+  outline:none;margin-bottom:13px;transition:border-color .2s;-webkit-appearance:none;
+}
+.field:focus{border-color:var(--gold);background:white}
+.auth-cta{
+  width:100%;padding:14px;background:var(--ink);color:white;border:none;
+  border-radius:var(--rs);font-family:inherit;font-size:14px;font-weight:600;
+  cursor:pointer;transition:background .2s;
+}
+.auth-cta:active{background:var(--gold)}
+.auth-err{
+  font-size:12px;color:var(--red);background:#fef2f2;border:1px solid #fecaca;
+  border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none;
+}
+.nav{
+  display:flex;align-items:center;padding:10px 14px;gap:10px;
+  background:var(--ink);flex-shrink:0;
+  padding-top:max(10px,env(safe-area-inset-top));
+}
+.nav-logo{display:flex;align-items:center;gap:8px}
+.nav-icon{
+  width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);
+  border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-family:'Cormorant Garamond',serif;font-size:15px;font-weight:600;color:var(--ink);
+}
+.nav-name{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:300;
+  color:#f5f0ea;letter-spacing:2.5px;text-transform:uppercase}
+.nav-badge{
+  margin-left:auto;font-size:10px;padding:3px 10px;border-radius:100px;
+  background:rgba(196,146,58,0.2);color:var(--gold-light);
+  border:1px solid rgba(196,146,58,0.3);
+}
+.nav-avatar{
+  width:28px;height:28px;border-radius:50%;
+  background:linear-gradient(135deg,var(--teal),#3a9b8a);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:600;color:white;cursor:pointer;flex-shrink:0;
+}
+.tabs{
+  display:flex;gap:5px;padding:9px 12px;overflow-x:auto;
+  background:white;border-bottom:1px solid var(--cream3);flex-shrink:0;
+}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:100px;
+  border:1.5px solid var(--cream3);background:var(--cream);
+  font-family:inherit;font-size:12px;font-weight:500;color:var(--ink4);
+  white-space:nowrap;cursor:pointer;transition:all .18s;flex-shrink:0;-webkit-appearance:none;
+}
+.tab.active{background:var(--ink);color:white;border-color:var(--ink)}
+.chips{
+  display:flex;gap:5px;padding:7px 12px;overflow-x:auto;
+  background:var(--cream2);border-bottom:1px solid var(--cream3);flex-shrink:0;
+}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  display:flex;align-items:center;gap:4px;padding:5px 11px;border-radius:100px;
+  border:1px solid var(--cream3);background:white;
+  font-family:inherit;font-size:11px;color:var(--ink3);
+  white-space:nowrap;cursor:pointer;flex-shrink:0;-webkit-appearance:none;
+}
+.chip:active{background:var(--gold-light);border-color:var(--gold)}
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:40px 20px;animation:up .4s ease;
+}
+.empty-icon{font-size:50px;margin-bottom:14px}
+.empty-h{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:300;color:var(--ink);margin-bottom:8px}
+.empty-p{font-size:13px;color:var(--ink4);line-height:1.7;max-width:280px}
+.row{display:flex;gap:9px;animation:up .28s ease}
+.row.user{flex-direction:row-reverse}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.av{width:28px;height:28px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;margin-top:2px;}
+.av.bot{background:var(--ink);color:var(--gold-light);font-family:'Cormorant Garamond',serif;font-size:14px}
+.av.user{background:linear-gradient(135deg,var(--teal),#3a9b8a);color:white}
+.bwrap{display:flex;flex-direction:column;max-width:84%;gap:3px}
+.row.user .bwrap{align-items:flex-end}
+.bub{padding:11px 14px;border-radius:14px;font-size:14px;line-height:1.7;word-break:break-word}
+.bub.bot{background:white;border:1px solid var(--cream3);border-top-left-radius:3px;color:var(--ink2)}
+.bub.user{background:var(--ink);color:rgba(255,255,255,0.9);border-top-right-radius:3px}
+.tag{display:inline-flex;align-items:center;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:100px;margin-bottom:8px;}
+.ocard{margin-top:9px;background:var(--cream);border:1px solid var(--cream3);border-radius:10px;overflow:hidden}
+.ocard-hd{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--cream3);background:var(--cream2);}
+.ocard-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink4);font-weight:500}
+.cpbtn{font-family:inherit;font-size:11px;font-weight:500;color:var(--ink3);background:white;border:1px solid var(--cream3);border-radius:5px;padding:3px 8px;cursor:pointer;transition:all .15s;}
+.cpbtn.ok{background:#f0fdf4;border-color:#86efac;color:var(--green)}
+.ocard-body{padding:11px 13px;font-size:13px;line-height:1.8;color:var(--ink2);white-space:pre-wrap}
+.ts{font-size:10px;color:var(--ink4);padding:0 2px}
+.typing-row{display:flex;gap:9px;animation:up .2s ease}
+.typing-bub{background:white;border:1px solid var(--cream3);border-radius:14px;border-top-left-radius:3px;padding:13px 15px;display:flex;align-items:center;gap:4px;}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ink4);animation:bounce 1.3s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0);background:var(--ink4)}30%{transform:translateY(-5px);background:var(--gold)}}
+.upbar{background:linear-gradient(135deg,var(--ink),#2d2520);padding:10px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.upbar-text{flex:1;font-size:12px;color:rgba(255,255,255,0.65);line-height:1.4}
+.upbar-text strong{color:var(--gold-light)}
+.upbar-btn{padding:7px 14px;background:var(--gold);border:none;border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap;}
+.ishell{display:flex;align-items:flex-end;gap:8px;background:var(--cream);border:1.5px solid var(--cream3);border-radius:var(--r);padding:10px 11px;transition:all .2s;}
+.ishell.focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}
+.ifield{flex:1;background:none;border:none;outline:none;font-family:inherit;font-size:14px;color:var(--ink);resize:none;max-height:100px;line-height:1.6;min-height:22px;}
+.ifield::placeholder{color:var(--ink4)}
+.sbtn{width:34px;height:34px;border-radius:8px;background:var(--ink);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .18s;color:white;-webkit-appearance:none;}
+.sbtn:disabled{background:var(--cream3)}
+.sbtn:not(:disabled):active{background:var(--gold);transform:scale(.95)}
+.imeta{margin-top:5px;display:flex;justify-content:space-between;padding:0 1px}
+.ihint{font-size:10px;color:var(--ink4)}
+.upill{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink4)}
+.ubar{width:44px;height:3px;background:var(--cream3);border-radius:100px;overflow:hidden}
+.ufill{height:100%;background:linear-gradient(90deg,var(--gold),#e8b060);border-radius:100px;transition:width .4s}
+.soverlay{position:fixed;inset:0;background:rgba(26,22,18,0.5);z-index:300;display:none;align-items:flex-end;}
+.soverlay.on{display:flex}
+.sheet{background:white;border-radius:20px 20px 0 0;padding:20px;width:100%;animation:shup .28s cubic-bezier(.2,0,0,1);padding-bottom:max(20px,env(safe-area-inset-bottom));}
+@keyframes shup{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sh-handle{width:34px;height:4px;background:var(--cream3);border-radius:100px;margin:0 auto 18px}
+.sh-title{font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:300;margin-bottom:14px}
+.sh-row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--cream3);cursor:pointer;}
+.sh-row:last-child{border:none}
+.sh-ico{width:34px;height:34px;border-radius:8px;background:var(--cream2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.sh-lbl{flex:1}
+.sh-lbl-main{font-size:14px;font-weight:500;color:var(--ink)}
+.sh-lbl-sub{font-size:12px;color:var(--ink4)}
+.sh-arr{color:var(--ink4);font-size:14px}
+.moverlay{position:fixed;inset:0;background:rgba(26,22,18,0.6);backdrop-filter:blur(4px);z-index:400;display:none;align-items:center;justify-content:center;padding:16px;}
+.moverlay.on{display:flex}
+.modal{background:white;border-radius:20px;padding:24px;width:100%;max-width:360px;animation:zin .22s ease;}
+@keyframes zin{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
+.m-close{float:right;background:var(--cream2);border:none;border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;color:var(--ink3);display:flex;align-items:center;justify-content:center;}
+.m-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;margin-bottom:5px}
+.m-sub{font-size:13px;color:var(--ink4);line-height:1.6;margin-bottom:18px}
+.pcard{border:1.5px solid var(--cream3);border-radius:12px;padding:14px;margin-bottom:9px;cursor:pointer;transition:all .18s;}
+.pcard.sel,.pcard:active{border-color:var(--gold);background:var(--gold-glow)}
+.pname{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:2px}
+.pprice{font-size:20px;font-weight:600;color:var(--gold);font-family:'Cormorant Garamond',serif}
+.pper{font-size:12px;color:var(--ink4)}
+.pfeats{font-size:12px;color:var(--ink3);margin-top:7px;line-height:1.7}
+.sbtn2{width:100%;padding:13px;background:var(--ink);color:white;border:none;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px;transition:background .2s;}
+.sbtn2:active{background:var(--gold)}
+.m-note{font-size:11px;color:var(--ink4);text-align:center;margin-top:9px}
+.install-banner{position:fixed;bottom:0;left:0;right:0;background:var(--ink);border-top:1px solid rgba(196,146,58,0.3);padding:14px 16px;display:none;align-items:center;gap:12px;z-index:600;animation:shup .3s cubic-bezier(.2,0,0,1);padding-bottom:max(14px,env(safe-area-inset-bottom));}
+.install-banner.show{display:flex}
+.install-banner-icon{width:42px;height:42px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:var(--ink);flex-shrink:0;}
+.install-banner-text{flex:1}
+.install-banner-title{font-size:13px;font-weight:600;color:white;margin-bottom:2px}
+.install-banner-sub{font-size:11px;color:rgba(255,255,255,0.45)}
+.install-banner-btn{padding:9px 16px;background:var(--gold);border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.install-banner-close{background:none;border:none;color:rgba(255,255,255,0.3);font-size:18px;cursor:pointer;padding:4px;flex-shrink:0;}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:white;font-size:13px;padding:10px 18px;border-radius:100px;opacity:0;transition:all .3s;pointer-events:none;z-index:500;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-icon">A</div>
+      <div class="auth-wordmark">ARIA</div>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="showTab('in')">Sign In</button>
+      <button class="auth-tab" onclick="showTab('up')">Sign Up</button>
+    </div>
+    <div id="aErr" class="auth-err"></div>
+    <div id="fIn">
+      <div class="field-label">Email</div>
+      <input class="field" type="email" id="lEmail" placeholder="you@example.com" autocomplete="email">
+      <div class="field-label">Password</div>
+      <input class="field" type="password" id="lPass" placeholder="••••••••" autocomplete="current-password">
+      <button class="auth-cta" onclick="doLogin()">Sign In →</button>
+    </div>
+    <div id="fUp" style="display:none">
+      <div class="field-label">Name</div>
+      <input class="field" type="text" id="uName" placeholder="Jane Smith" autocomplete="name">
+      <div class="field-label">Email</div>
+      <input class="field" type="email" id="uEmail" placeholder="you@example.com" autocomplete="email">
+      <div class="field-label">Password</div>
+      <input class="field" type="password" id="uPass" placeholder="Min. 8 characters" autocomplete="new-password">
+      <button class="auth-cta" onclick="doSignup()">Create Account →</button>
+    </div>
+  </div>
+</div><div id="app">
+  <div class="nav">
+    <div class="nav-logo">
+      <div class="nav-icon">A</div>
+      <div class="nav-name">ARIA</div>
+    </div>
+    <div class="nav-badge" id="navBadge">✉️ Email</div>
+    <div class="nav-avatar" id="navAv" onclick="openSheet()">U</div>
+  </div>
+  <div class="tabs" id="tabs">
+    <button class="tab active" id="t-email" onclick="setMode('email')">✉️ Email</button>
+    <button class="tab" id="t-calendar" onclick="setMode('calendar')">📅 Schedule</button>
+    <button class="tab" id="t-summary" onclick="setMode('summary')">📄 Summarize</button>
+    <button class="tab" id="t-general" onclick="setMode('general')">💬 General</button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="msgs" id="msgs">
+    <div class="empty" id="empty">
+      <div class="empty-icon" id="eIcon">✉️</div>
+      <div class="empty-h" id="eH">Draft emails instantly</div>
+      <div class="empty-p" id="eP">Tap a quick action above or type below.</div>
+    </div>
+  </div>
+  <div class="upbar" id="upbar" style="display:none">
+    <div class="upbar-text"><strong>Running low on messages.</strong><br>Upgrade for unlimited.</div>
+    <button class="upbar-btn" onclick="openUp()">Upgrade ✦</button>
+  </div>
+  <div class="iarea">
+    <div class="ishell" id="ishell">
+      <textarea class="ifield" id="ifield" rows="1"
+        placeholder="Describe the email you need..."
+        oninput="onInput(this)"
+        onfocus="ishell.classList.add('focus')"
+        onblur="ishell.classList.remove('focus')"></textarea>
+      <button class="sbtn" id="sbtn" onclick="send()" disabled>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2L2 8l12 6V2z"/></svg>
+      </button>
+    </div>
+    <div class="imeta">
+      <span class="ihint" id="ihint">Type a message to begin</span>
+      <span class="upill">
+        <span id="utext">0/20</span>
+        <div class="ubar"><div class="ufill" id="ufill" style="width:0%"></div></div>
+      </span>
+    </div>
+  </div>
+</div>
+<div class="soverlay" id="sov" onclick="closeSheet(event)">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div class="sh-title">My Account</div>
+    <div class="sh-row" onclick="openUp();closeSh()">
+      <div class="sh-ico">✦</div>
+      <div class="sh-lbl"><div class="sh-lbl-main">Upgrade to Pro</div><div class="sh-lbl-sub">Unlimited messages + export</div></div>
+      <div class="sh-arr">›</div>
+    </div>
+    <div class="sh-row" onclick="exportChat();closeSh()">
+      <div class="sh-ico">↓</div>
+      <div class="sh-lbl"><div class="sh-lbl-main">Export Chat</div><div class="sh-lbl-sub">Download as .txt</div></div>
+      <div class="sh-arr">›</div>
+    </div>
+    <div class="sh-row" onclick="clearChat();closeSh()">
+      <div class="sh-ico">🗑️</div>
+      <div class="sh-lbl"><div class="sh-lbl-main">Clear Chat</div><div class="sh-lbl-sub">Start fresh</div></div>
+      <div class="sh-arr">›</div>
+    </div>
+    <div class="sh-row" onclick="doLogout()">
+      <div class="sh-ico">🚪</div>
+      <div class="sh-lbl"><div class="sh-lbl-main">Sign Out</div><div id="shEmail" class="sh-lbl-sub"></div></div>
+      <div class="sh-arr">›</div>
+    </div>
+  </div>
+</div>
+<div class="moverlay" id="mov">
+  <div class="modal">
+    <button class="m-close" onclick="closeUp()">✕</button>
+    <div class="m-title">Upgrade ARIA</div>
+    <div class="m-sub">Unlock unlimited messages, history export, and priority support.</div>
+    <div class="pcard sel" id="pPro" onclick="selPlan('pro')">
+      <div class="pname">Pro Plan</div>
+      <span class="pprice">$12</span><span class="pper">/month</span>
+      <div class="pfeats">✓ Unlimited messages<br>✓ Export history<br>✓ All 4 modes<br>✓ Priority support</div>
+    </div>
+    <div class="pcard" id="pTeam" onclick="selPlan('team')">
+      <div class="pname">Team Plan</div>
+      <span class="pprice">$39</span><span class="pper">/month</span>
+      <div class="pfeats">✓ 5 team seats<br>✓ Shared workspace<br>✓ Custom prompts<br>✓ Admin dashboard</div>
+    </div>
+    <button class="sbtn2" onclick="goStripe()">Continue to Payment →</button>
+    <div class="m-note">Secured by Stripe · Cancel anytime</div>
+  </div>
+</div>
+<div class="install-banner" id="installBanner">
+  <div class="install-banner-icon">A</div>
+  <div class="install-banner-text">
+    <div class="install-banner-title">Add ARIA to Home Screen</div>
+    <div class="install-banner-sub">Works like a native app — no App Store needed</div>
+  </div>
+  <button class="install-banner-btn" id="installBtn">Install</button>
+  <button class="install-banner-close" onclick="dismissInstall()">✕</button>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const STRIPE_PRO  = 'https://buy.stripe.com/YOUR_PRO_LINK';
+const STRIPE_TEAM = 'https://buy.stripe.com/YOUR_TEAM_LINK';
+const MAX = 20;
+const M = {
+  email:{label:'Email',icon:'✉️',ph:'Describe the email you need...',tag:'Email Draft',tagBg:'#f0c4cc',tagFg:'#9b3a4a',eH:'Draft emails instantly',eP:'Tell me what to write and get a polished draft.',chips:[['📨 Follow-up','Write a professional follow-up email after our project kickoff meeting'],['🚫 Decline','Draft a polite email declining a meeting request'],['📊 Status','Write an email requesting a project status update'],['🤝 Intro','Draft a warm introduction email to a new client']],sys:`You are ARIA, a professional email writing assistant. Produce a complete email:\n\nSubject: [subject line]\n\n[email body]\n\n---\n💡 Tips: [1-2 customization suggestions]\n\nAdapt tone to context. Keep it concise and human.`},
+  calendar:{label:'Schedule',icon:'📅',ph:'Describe a meeting or scheduling need...',tag:'Schedule',tagBg:'#a8d5cc',tagFg:'#2d7a6b',eH:'Master your calendar',eP:'Create agendas, draft invites, plan your week.',chips:[['📋 Agenda','Create a 60-minute project kickoff meeting agenda'],['🗓️ Invite','Write a meeting invite for a quarterly review'],['🔁 Weekly sync','Structure an efficient 30-minute weekly team sync'],['⏰ Time block','Create a time-blocking schedule for a busy day']],sys:`You are ARIA, a scheduling expert. Help create agendas, invites, and time plans. Be structured and time-conscious.`},
+  summary:{label:'Summarize',icon:'📄',ph:'Paste text to summarize...',tag:'Summary',tagBg:'#f0d9a8',tagFg:'#7a5a1a',eH:'Summarize anything',eP:'Paste notes, reports, or any text for a structured summary.',chips:[['📝 Meeting notes','Summarize these meeting notes and list all action items'],['📰 TL;DR','Give me a 3-sentence TL;DR of this content'],['📊 Exec summary','Write an executive summary for a C-suite audience'],['✅ Actions','Extract all action items and decisions from this text']],sys:`You are ARIA, a summarization expert. Structure output as: **Key Points**, **Decisions Made**, **Action Items** (numbered), **Open Questions**. Be concise but complete.`},
+  general:{label:'General',icon:'💬',ph:'Ask me anything about admin tasks...',tag:'Response',tagBg:'#ebe2d5',tagFg:'#6b5e56',eH:'Your admin assistant',eP:'Ask about writing, planning, processes, templates.',chips:[['📋 Prioritize','Help me prioritize my task list for a busy day'],['📞 Call script','Write a script for a difficult client check-in call'],['📣 Announce','Draft a team announcement for a policy change'],['🎤 Outline','Give me a 10-minute stakeholder presentation outline']],sys:`You are ARIA, a professional admin assistant. Help with writing, planning, organizing. Be direct and provide structured, actionable outputs.`}
+};
+let mode='email',hist=[],count=0,busy=false,user=null,plan='pro';
+const SK='aria_s',UK='aria_u';
+function getU(){try{return JSON.parse(localStorage.getItem(UK)||'{}')}catch{return{}}}
+function saveU(u){localStorage.setItem(UK,JSON.stringify(u))}
+function showTab(t){
+  document.querySelectorAll('.auth-tab').forEach((b,i)=>b.classList.toggle('active',i===(t==='in'?0:1)));
+  document.getElementById('fIn').style.display=t==='in'?'block':'none';
+  document.getElementById('fUp').style.display=t==='up'?'block':'none';
+  document.getElementById('aErr').style.display='none';
+}
+function err(m){const e=document.getElementById('aErr');e.textContent=m;e.style.display='block'}
+function doLogin(){
+  const e=document.getElementById('lEmail').value.trim();
+  const p=document.getElementById('lPass').value;
+  if(!e||!p){err('Please fill in all fields.');return}
+  const u=getU();
+  if(!u[e]){err('No account found. Please sign up.');return}
+  if(u[e].pw!==btoa(p)){err('Incorrect password.');return}
+  login({email:e,name:u[e].name,c:u[e].c||0});
+}
+function doSignup(){
+  const n=document.getElementById('uName').value.trim();
+  const e=document.getElementById('uEmail').value.trim();
+  const p=document.getElementById('uPass').value;
+  if(!n||!e||!p){err('Please fill in all fields.');return}
+  if(p.length<8){err('Password must be at least 8 characters.');return}
+  const u=getU();
+  if(u[e]){err('Account already exists. Please sign in.');return}
+  u[e]={name:n,pw:btoa(p),c:0};saveU(u);
+  fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e})}).catch(()=>{});
+  login({email:e,name:n,c:0});
+}
+function login(u){
+  user=u;count=u.c||0;
+  sessionStorage.setItem(SK,JSON.stringify(u));
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('app').classList.add('on');
+  const ini=(u.name||'U').split(' ').map(x=>x[0]).join('').toUpperCase().slice(0,2);
+  document.getElementById('navAv').textContent=ini;
+  document.getElementById('shEmail').textContent=u.email;
+  updateUsage();renderChips();
+}
+function doLogout(){
+  sessionStorage.removeItem(SK);user=null;hist=[];count=0;
+  document.getElementById('app').classList.remove('on');
+  document.getElementById('authScreen').style.display='flex';
+  clearMsgs();
+}
+(function init(){const s=sessionStorage.getItem(SK);if(s){try{login(JSON.parse(s))}catch{sessionStorage.removeItem(SK)}}})();
+function setMode(m){
+  mode=m;hist=[];clearMsgs();
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('t-'+m).classList.add('active');
+  document.getElementById('navBadge').textContent=M[m].icon+' '+M[m].label;
+  document.getElementById('ifield').placeholder=M[m].ph;
+  renderChips();
+}
+function renderChips(){
+  document.getElementById('chips').innerHTML=M[mode].chips.map(([l,t])=>`<button class="chip" onclick="quickSend(${JSON.stringify(t)})">${l}</button>`).join('');
+}
+function onInput(el){
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,100)+'px';
+  document.getElementById('sbtn').disabled=!el.value.trim()||busy;
+}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
+function quickSend(t){document.getElementById('ifield').value=t;onInput(document.getElementById('ifield'));send()}
+function ts(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+function addMsg(role,text){
+  document.getElementById('empty')?.remove();
+  const m=M[mode],isOut=['email','calendar','summary'].includes(mode)&&role==='bot';
+  const msgs=document.getElementById('msgs');
+  const row=document.createElement('div');row.className=`row ${role}`;
+  const av=document.createElement('div');av.className=`av ${role}`;
+  av.textContent=role==='bot'?'A':(user?.name?.[0]||'U').toUpperCase();
+  const bw=document.createElement('div');bw.className='bwrap';
+  const b=document.createElement('div');b.className=`bub ${role}`;
+  if(role==='bot'){
+    const tag=document.createElement('div');tag.className='tag';
+    tag.style.cssText=`background:${m.tagBg};color:${m.tagFg}`;
+    tag.textContent=m.tag;b.appendChild(tag);
+    if(isOut){
+      const intro=document.createElement('div');intro.style.cssText='margin-bottom:9px;font-size:13px;color:var(--ink3)';intro.textContent="Here's your draft:";b.appendChild(intro);
+      const card=document.createElement('div');card.className='ocard';
+      const hd=document.createElement('div');hd.className='ocard-hd';
+      const lbl=document.createElement('span');lbl.className='ocard-lbl';lbl.textContent='Generated Output';
+      const cp=document.createElement('button');cp.className='cpbtn';cp.textContent='⎘ Copy';
+      cp.onclick=()=>{navigator.clipboard.writeText(text);cp.textContent='✓ Copied';cp.classList.add('ok');setTimeout(()=>{cp.textContent='⎘ Copy';cp.classList.remove('ok')},2000)};
+      hd.appendChild(lbl);hd.appendChild(cp);
+      const body=document.createElement('div');body.className='ocard-body';body.textContent=text;
+      card.appendChild(hd);card.appendChild(body);b.appendChild(card);
+    }else{const p=document.createElement('div');p.style.whiteSpace='pre-wrap';p.textContent=text;b.appendChild(p);}
+  }else{b.textContent=text;}
+  const t=document.createElement('div');t.className='ts';t.textContent=ts();
+  bw.appendChild(b);bw.appendChild(t);row.appendChild(av);row.appendChild(bw);
+  msgs.appendChild(row);msgs.scrollTop=msgs.scrollHeight;
+}
+function showTyping(){
+  document.getElementById('empty')?.remove();
+  const msgs=document.getElementById('msgs');
+  const row=document.createElement('div');row.className='typing-row';row.id='tr';
+  const av=document.createElement('div');av.className='av bot';av.textContent='A';
+  const b=document.createElement('div');b.className='typing-bub';
+  b.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  row.appendChild(av);row.appendChild(b);msgs.appendChild(row);msgs.scrollTop=msgs.scrollHeight;
+}
+function hideTyping(){document.getElementById('tr')?.remove()}
+function updateUsage(){
+  const pct=Math.min((count/MAX)*100,100);
+  document.getElementById('ufill').style.width=pct+'%';
+  document.getElementById('utext').textContent=`${count}/${MAX}`;
+  document.getElementById('upbar').style.display=count>=MAX*.75?'flex':'none';
+  if(user){const u=getU();if(u[user.email])u[user.email].c=count;saveU(u)}
+}
+async function send(){
+  const f=document.getElementById('ifield');
+  const text=f.value.trim();
+  if(!text||busy)return;
+  if(count>=MAX){openUp();return}
+  busy=true;document.getElementById('sbtn').disabled=true;
+  addMsg('user',text);hist.push({role:'user',content:text});
+  f.value='';f.style.height='auto';
+  document.getElementById('ihint').textContent='ARIA is thinking…';
+  showTyping();count++;updateUsage();
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:M[mode].sys,messages:hist})});
+    const data=await res.json();
+    if(data.error)throw new Error(data.error);
+    const reply=data.content?.map(b=>b.text||'').join('')||'Something went wrong.';
+    hist.push({role:'assistant',content:reply});
+    hideTyping();addMsg('bot',reply);
+  }catch(e){
+    hideTyping();addMsg('bot','⚠️ '+(e.message||'Could not connect. Please try again.'));
+  }
+  busy=false;document.getElementById('sbtn').disabled=false;
+  document.getElementById('ihint').textContent='Tap send or press Enter';
+  f.focus();
+}
+function clearMsgs(){
+  const msgs=document.getElementById('msgs');msgs.innerHTML='';
+  const m=M[mode];
+  msgs.innerHTML=`<div class="empty" id="empty"><div class="empty-icon" id="eIcon">${m.icon}</div><div class="empty-h" id="eH">${m.eH}</div><div class="empty-p" id="eP">${m.eP}</div></div>`;
+}
+function clearChat(){hist=[];clearMsgs();toast('Chat cleared')}
+function exportChat(){
+  if(!hist.length){toast('Nothing to export yet');return}
+  const txt=hist.map(h=>`[${h.role.toUpperCase()}]\n${h.content}`).join('\n\n---\n\n');
+  const b=new Blob([`ARIA Export — ${M[mode].label}\n${new Date().toLocaleString()}\n\n${'─'.repeat(40)}\n\n${txt}`],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`aria-${Date.now()}.txt`;a.click();
+}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function openSheet(){document.getElementById('sov').classList.add('on')}
+function closeSh(){document.getElementById('sov').classList.remove('on')}
+function closeSheet(e){if(e.target===document.getElementById('sov'))closeSh()}
+function openUp(){document.getElementById('mov').classList.add('on')}
+function closeUp(){document.getElementById('mov').classList.remove('on')}
+function selPlan(p){plan=p;document.getElementById('pPro').classList.toggle('sel',p==='pro');document.getElementById('pTeam').classList.toggle('sel',p==='team');}
+function goStripe(){const url=plan==='pro'?STRIPE_PRO:STRIPE_TEAM;if(url.includes('YOUR_')){toast('Add your Stripe link in the config');return}window.open(url,'_blank');}
+renderChips();
+let deferredPrompt=null;
+if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').then(()=>console.log('✅ ARIA SW registered')).catch(e=>console.warn('SW:',e));});}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;setTimeout(showInstallBanner,20000);});
+let _installTriggered=false;
+function showInstallBanner(){if(sessionStorage.getItem('aria_nodismiss'))return;document.getElementById('installBanner').classList.add('show');}
+function dismissInstall(){document.getElementById('installBanner').classList.remove('show');sessionStorage.setItem('aria_nodismiss','1');}
+document.getElementById('installBtn').addEventListener('click',async()=>{
+  if(deferredPrompt){deferredPrompt.prompt();const{outcome}=await deferredPrompt.userChoice;if(outcome==='accepted')toast('🎉 ARIA added to home screen!');deferredPrompt=null;}
+  else{toast('Tap Share (□↑) then "Add to Home Screen"');}
+  dismissInstall();
+});
+</script>
+</body>
+</html>
