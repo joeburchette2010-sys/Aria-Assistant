@@ -1,6 +1,3 @@
-bash
-cat /home/claude/aria-v2/server.js
-Output
 'use strict';
 const express = require('express');
 const cors    = require('cors');
