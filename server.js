@@ -153,7 +153,227 @@ app.post('/api/deploy-latest', async (req, res) => {
 });
 
 
-/* ── Admin dashboard ── */
+/* ── Deploy Panel ── */
+app.get('/deploy-panel', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA Deploy Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:100vh}
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{background:white;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.1)}
+.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
+.brand-icon{width:36px;height:36px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#1a1612}
+.brand-name{font-size:20px;font-weight:300;letter-spacing:3px;text-transform:uppercase}
+.label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b5e56;margin-bottom:6px}
+.field{width:100%;padding:12px 14px;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:14px;outline:none;margin-bottom:14px;background:#f9f6f1;-webkit-appearance:none}
+.field:focus{border-color:#c4923a;background:white}
+.btn{width:100%;padding:13px;background:#1a1612;color:white;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px}
+.btn:active{background:#c4923a}
+.btn:disabled{background:#9b8c84;cursor:not-allowed}
+.btn-sec{width:100%;padding:11px;background:transparent;color:#6b5e56;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.err{font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none}
+.dashboard{display:none;padding:20px;max-width:600px;margin:0 auto}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:14px 0;border-bottom:1px solid #ebe2d5}
+.nav-brand{display:flex;align-items:center;gap:8px}
+.nav-icon{width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1a1612}
+.nav-title{font-size:16px;font-weight:500;letter-spacing:1px}
+.nav-sub{font-size:12px;color:#9b8c84}
+.logout{font-size:12px;color:#9b8c84;background:none;border:1px solid #ebe2d5;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.section{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:20px;margin-bottom:16px}
+.section-title{font-size:13px;font-weight:600;color:#1a1612;margin-bottom:4px}
+.section-sub{font-size:12px;color:#9b8c84;margin-bottom:16px;line-height:1.5}
+.file-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3ede4}
+.file-row:last-child{border:none}
+.file-name{font-size:13px;color:#3d3530;font-family:monospace}
+.file-status{font-size:11px;padding:3px 9px;border-radius:100px;background:#f0d9a8;color:#7a5a1a}
+.file-status.ok{background:#f0fdf4;color:#166534}
+.file-status.err{background:#fef2f2;color:#dc2626}
+.deploy-btn{width:100%;padding:14px;background:#1a1612;color:white;border:none;border-radius:10px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px}
+.deploy-btn:active{background:#c4923a}
+.deploy-btn:disabled{background:#9b8c84;cursor:not-allowed}
+.status-bar{padding:11px 14px;border-radius:8px;font-size:13px;display:none;margin-bottom:12px;line-height:1.5}
+.status-bar.ok{background:#f0fdf4;border:1px solid #86efac;color:#166534}
+.status-bar.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626}
+.status-bar.loading{background:#f0d9a8;border:1px solid #c4923a;color:#7a5a1a}
+.log-box{background:#1a1612;border-radius:10px;padding:14px;display:none;margin-top:12px}
+.log-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#9b8c84;margin-bottom:8px}
+.log-line{font-size:12px;color:#f0d9a8;font-family:monospace;line-height:1.9}
+.log-line.ok{color:#86efac}
+.log-line.err{color:#fca5a5}
+.health-dot{width:8px;height:8px;border-radius:50%;background:#9b8c84;display:inline-block;margin-right:6px}
+.health-dot.live{background:#16a34a}
+</style>
+</head>
+<body>
+
+<div class="login" id="loginView">
+  <div class="card">
+    <div class="brand">
+      <div class="brand-icon">A</div>
+      <div class="brand-name">ARIA</div>
+    </div>
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="font-size:15px;font-weight:500;margin-bottom:4px">Deploy Panel</div>
+      <div style="font-size:12px;color:#9b8c84">Enter your deploy password</div>
+    </div>
+    <div class="err" id="loginErr">Incorrect password.</div>
+    <div class="label">Password</div>
+    <input class="field" type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn" onclick="doLogin()">Access Deploy Panel →</button>
+  </div>
+</div>
+
+<div class="dashboard" id="dashView">
+  <div class="nav">
+    <div class="nav-brand">
+      <div class="nav-icon">A</div>
+      <div>
+        <div class="nav-title">Deploy Panel</div>
+        <div class="nav-sub"><span class="health-dot" id="healthDot"></span><span id="healthText">Checking...</span></div>
+      </div>
+    </div>
+    <button class="logout" onclick="doLogout()">Sign Out</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Files Queued for Deploy</div>
+    <div class="section-sub">These files will be pushed to GitHub and Render will redeploy automatically.</div>
+    <div id="fileRows">
+      <div class="file-row">
+        <span class="file-name">public/index.html</span>
+        <span class="file-status" id="status-index">Ready</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+
+  <button class="deploy-btn" id="deployBtn" onclick="deployAll()">🚀 Deploy All Files</button>
+  <button class="btn-sec" onclick="checkHealth()">Check Server Health</button>
+
+  <div class="log-box" id="logBox">
+    <div class="log-label">Deploy Log</div>
+    <div id="logLines"></div>
+  </div>
+</div>
+
+<script>
+let secret = '';
+
+function doLogin() {
+  const pw = document.getElementById('pw').value;
+  if (!pw) return;
+  secret = pw;
+  checkHealth();
+  document.getElementById('loginErr').style.display = 'none';
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('dashView').style.display = 'block';
+}
+
+function doLogout() {
+  secret = '';
+  document.getElementById('loginView').style.display = 'flex';
+  document.getElementById('dashView').style.display = 'none';
+  document.getElementById('pw').value = '';
+}
+
+async function checkHealth() {
+  try {
+    const res = await fetch('/health');
+    const data = await res.json();
+    if (data.status === 'ok') {
+      document.getElementById('healthDot').className = 'health-dot live';
+      document.getElementById('healthText').textContent = 'Server live';
+    }
+  } catch(e) {
+    document.getElementById('healthText').textContent = 'Server sleeping';
+  }
+}
+
+function showStatus(msg, type) {
+  const s = document.getElementById('statusBar');
+  s.textContent = msg;
+  s.className = 'status-bar ' + type;
+  s.style.display = 'block';
+}
+
+function addLog(msg, type='') {
+  document.getElementById('logBox').style.display = 'block';
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  document.getElementById('logLines').appendChild(line);
+}
+
+function setFileStatus(id, text, type) {
+  const el = document.getElementById('status-' + id);
+  if (el) { el.textContent = text; el.className = 'file-status ' + type; }
+}
+
+async function deployAll() {
+  const btn = document.getElementById('deployBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Deploying...';
+  document.getElementById('logLines').innerHTML = '';
+  document.getElementById('logBox').style.display = 'none';
+  showStatus('Starting deploy...', 'loading');
+  addLog('Deploy started');
+
+  const files = [
+    { id: 'index', filename: 'public/index.html' }
+  ];
+
+  let allOk = true;
+  for (const f of files) {
+    setFileStatus(f.id, 'Deploying...', '');
+    addLog('Pushing ' + f.filename + ' to GitHub...');
+    try {
+      const res = await fetch('/api/deploy-latest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret, filename: f.filename })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setFileStatus(f.id, '✓ Deployed', 'ok');
+        addLog('✓ ' + f.filename + ' pushed successfully', 'ok');
+      } else {
+        setFileStatus(f.id, '✗ Failed', 'err');
+        addLog('✗ ' + f.filename + ': ' + (data.error || 'failed'), 'err');
+        allOk = false;
+      }
+    } catch(e) {
+      setFileStatus(f.id, '✗ Error', 'err');
+      addLog('✗ Network error: ' + e.message, 'err');
+      allOk = false;
+    }
+  }
+
+  if (allOk) {
+    showStatus('✅ All files deployed! Render is rebuilding — live in ~60 seconds.', 'ok');
+    addLog('Deploy complete. Render auto-deploy triggered.', 'ok');
+    btn.textContent = '✅ Deployed!';
+    setTimeout(() => { btn.disabled = false; btn.textContent = '🚀 Deploy All Files'; }, 5000);
+  } else {
+    showStatus('⚠️ Some files failed. Check the log below.', 'err');
+    btn.disabled = false;
+    btn.textContent = '🚀 Deploy All Files';
+  }
+}
+
+checkHealth();
+</script>
+</body>
+</html>`);
+});
+
+
 app.get('/admin', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="en">
