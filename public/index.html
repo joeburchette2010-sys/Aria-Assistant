@@ -1,4 +1,3 @@
-cat > /home/claude/aria-v2/public/index.html << 'HTMLEOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -170,7 +169,20 @@ body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);dis
       <div class="field-label">Password</div>
       <input class="field" type="password" id="lPass" placeholder="••••••••" autocomplete="current-password">
       <button class="auth-cta" onclick="doLogin()">Sign In →</button>
+      <div style="text-align:center;margin-top:12px">
+        <button onclick="showTab('reset')" style="background:none;border:none;font-family:inherit;font-size:12px;color:var(--ink4);cursor:pointer;text-decoration:underline">Forgot password?</button>
+      </div>
     </div>
+    <div id="fReset" style="display:none">
+      <div style="text-align:center;margin-bottom:16px;font-size:13px;color:var(--ink3);line-height:1.6">Enter your email and choose a new password.</div>
+      <div class="field-label">Email</div>
+      <input class="field" type="email" id="rEmail" placeholder="you@example.com" autocomplete="email">
+      <div class="field-label">New Password</div>
+      <input class="field" type="password" id="rPass" placeholder="Min. 8 characters" autocomplete="new-password">
+      <button class="auth-cta" onclick="doReset()">Reset Password →</button>
+      <div style="text-align:center;margin-top:12px">
+        <button onclick="showTab('in')" style="background:none;border:none;font-family:inherit;font-size:12px;color:var(--ink4);cursor:pointer;text-decoration:underline">Back to Sign In</button>
+      </div>
     <div id="fUp" style="display:none">
       <div class="field-label">Name</div>
       <input class="field" type="text" id="uName" placeholder="Jane Smith" autocomplete="name">
@@ -317,7 +329,21 @@ function showTab(t){
   document.querySelectorAll('.auth-tab').forEach((b,i)=>b.classList.toggle('active',i===(t==='in'?0:1)));
   document.getElementById('fIn').style.display=t==='in'?'block':'none';
   document.getElementById('fUp').style.display=t==='up'?'block':'none';
+  document.getElementById('fReset').style.display=t==='reset'?'block':'none';
   document.getElementById('aErr').style.display='none';
+}
+function doReset(){
+  const e=document.getElementById('rEmail').value.trim();
+  const p=document.getElementById('rPass').value;
+  if(!e||!p){err('Please fill in all fields.');return}
+  if(p.length<8){err('Password must be at least 8 characters.');return}
+  const u=getU();
+  if(!u[e]){err('No account found with that email.');return}
+  u[e].pw=btoa(p);saveU(u);
+  document.getElementById('rEmail').value='';
+  document.getElementById('rPass').value='';
+  showTab('in');
+  toast('Password reset! Please sign in.');
 }
 function err(m){const e=document.getElementById('aErr');e.textContent=m;e.style.display='block'}
 function doLogin(){
@@ -485,5 +511,3 @@ document.getElementById('installBtn').addEventListener('click',async()=>{
 </script>
 </body>
 </html>
-HTMLEOF
-echo "✅ Done — $(wc -l < /home/claude/aria-v2/public/index.html) lines"
