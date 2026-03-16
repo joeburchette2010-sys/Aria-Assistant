@@ -263,6 +263,10 @@ body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:
         <span class="file-name">public/sw.js</span>
         <span class="file-status" id="status-sw">Ready</span>
       </div>
+      <div class="file-row">
+        <span class="file-name">server.js</span>
+        <span class="file-status" id="status-server">Ready</span>
+      </div>
     </div>
   </div>
 
@@ -340,8 +344,9 @@ async function deployAll() {
   addLog('Deploy started');
 
   const files = [
-    { id: 'index', filename: 'public/index.html' },
-    { id: 'sw',    filename: 'public/sw.js' }
+    { id: 'index',  filename: 'public/index.html' },
+    { id: 'sw',     filename: 'public/sw.js' },
+    { id: 'server', filename: 'server.js' }
   ];
 
   let allOk = true;
