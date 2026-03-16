@@ -68,36 +68,24 @@ app.get('/api/admin/export', adminAuth, (req, res) => {
 /* ── AUTO-DEPLOY endpoint ── */
 app.post('/api/deploy', async (req, res) => {
   const { secret, filename, content } = req.body;
-
-  // Verify deploy secret
   const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
   if (secret !== deploySecret) return res.status(401).json({ error: 'Invalid deploy secret' });
 
   const token = process.env.GITHUB_TOKEN;
   const repo  = process.env.GITHUB_REPO;
   const email = process.env.GITHUB_EMAIL;
-
   if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
 
   try {
-    // Get current file SHA (required by GitHub API to update)
     const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-      headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json'
-      }
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
     });
     const fileData = await getRes.json();
     const sha = fileData.sha;
 
-    // Push updated file
     const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       method: 'PUT',
-      headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: `Auto-deploy: update ${filename}`,
         content: Buffer.from(content).toString('base64'),
@@ -109,15 +97,61 @@ app.post('/api/deploy', async (req, res) => {
     const result = await pushRes.json();
     if (result.content) {
       console.log(`DEPLOYED: ${filename}`);
-      res.json({ ok: true, message: `${filename} deployed successfully` });
+      res.json({ ok: true, message: `${filename} deployed` });
     } else {
       res.status(500).json({ error: result.message || 'Deploy failed' });
     }
   } catch (err) {
-    console.error('[deploy error]', err.message);
     res.status(502).json({ error: 'Deploy failed: ' + err.message });
   }
 });
+
+/* ── DEPLOY-LATEST: reads current file from disk and pushes to GitHub ── */
+app.post('/api/deploy-latest', async (req, res) => {
+  const { secret, filename } = req.body;
+  const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
+  if (secret !== deploySecret) return res.status(401).json({ error: 'Invalid deploy secret' });
+
+  const token = process.env.GITHUB_TOKEN;
+  const repo  = process.env.GITHUB_REPO;
+  const email = process.env.GITHUB_EMAIL;
+  if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
+
+  try {
+    const fs = require('fs');
+    const filePath = path.join(__dirname, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on server' });
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    const fileData = await getRes.json();
+    const sha = fileData.sha;
+
+    const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `Auto-deploy: update ${filename}`,
+        content: Buffer.from(content).toString('base64'),
+        sha,
+        committer: { name: 'ARIA Deploy Bot', email: email || 'deploy@aria.app' }
+      })
+    });
+
+    const result = await pushRes.json();
+    if (result.content) {
+      console.log(`DEPLOYED LATEST: ${filename}`);
+      res.json({ ok: true, message: `${filename} deployed from server` });
+    } else {
+      res.status(500).json({ error: result.message || 'Deploy failed' });
+    }
+  } catch (err) {
+    res.status(502).json({ error: 'Deploy failed: ' + err.message });
+  }
+});
+
 
 /* ── Admin dashboard ── */
 app.get('/admin', (req, res) => {
