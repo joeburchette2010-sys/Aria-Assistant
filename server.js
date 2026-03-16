@@ -42,22 +42,17 @@ app.post('/api/signup', (req, res) => {
   res.json({ ok: true });
 });
 
-/* ── Admin auth middleware ── */
+/* ── Admin auth ── */
 function adminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || req.query.token;
   const adminPassword = process.env.ADMIN_PASSWORD || 'aria-admin-2025';
-  if (token !== adminPassword) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (token !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
-/* ── Admin API: get all signups ── */
+/* ── Admin API: get signups ── */
 app.get('/api/admin/signups', adminAuth, (req, res) => {
-  res.json({
-    total: signups.length,
-    signups: signups.slice().reverse()
-  });
+  res.json({ total: signups.length, signups: signups.slice().reverse() });
 });
 
 /* ── Admin API: export CSV ── */
@@ -70,7 +65,61 @@ app.get('/api/admin/export', adminAuth, (req, res) => {
   res.send(csv);
 });
 
-/* ── Admin dashboard page ── */
+/* ── AUTO-DEPLOY endpoint ── */
+app.post('/api/deploy', async (req, res) => {
+  const { secret, filename, content } = req.body;
+
+  // Verify deploy secret
+  const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
+  if (secret !== deploySecret) return res.status(401).json({ error: 'Invalid deploy secret' });
+
+  const token = process.env.GITHUB_TOKEN;
+  const repo  = process.env.GITHUB_REPO;
+  const email = process.env.GITHUB_EMAIL;
+
+  if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
+
+  try {
+    // Get current file SHA (required by GitHub API to update)
+    const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    const fileData = await getRes.json();
+    const sha = fileData.sha;
+
+    // Push updated file
+    const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `Auto-deploy: update ${filename}`,
+        content: Buffer.from(content).toString('base64'),
+        sha,
+        committer: { name: 'ARIA Deploy Bot', email: email || 'deploy@aria.app' }
+      })
+    });
+
+    const result = await pushRes.json();
+    if (result.content) {
+      console.log(`DEPLOYED: ${filename}`);
+      res.json({ ok: true, message: `${filename} deployed successfully` });
+    } else {
+      res.status(500).json({ error: result.message || 'Deploy failed' });
+    }
+  } catch (err) {
+    console.error('[deploy error]', err.message);
+    res.status(502).json({ error: 'Deploy failed: ' + err.message });
+  }
+});
+
+/* ── Admin dashboard ── */
 app.get('/admin', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -112,8 +161,7 @@ table{width:100%;border-collapse:collapse}
 th{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#9b8c84;padding:12px 16px;text-align:left;border-bottom:1px solid #ebe2d5;background:#f9f6f1}
 td{padding:12px 16px;font-size:13px;border-bottom:1px solid #f3ede4;color:#3d3530}
 tr:last-child td{border:none}
-tr:hover td{background:#f9f6f1}
-.empty{text-align:center;padding:40px;color:#9b8c84;font-size:14px}
+.empty-td{text-align:center;padding:40px;color:#9b8c84;font-size:14px}
 .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:100px;background:#f0d9a8;color:#7a5a1a}
 .refresh{font-size:11px;color:#9b8c84;margin-top:12px;text-align:center}
 </style>
@@ -121,45 +169,29 @@ tr:hover td{background:#f9f6f1}
 <body>
 <div class="login" id="loginView">
   <div class="card">
-    <div class="brand">
-      <div class="brand-icon">A</div>
-      <div class="brand-name">ARIA</div>
-    </div>
+    <div class="brand"><div class="brand-icon">A</div><div class="brand-name">ARIA</div></div>
     <div style="text-align:center;margin-bottom:22px">
       <div style="font-size:15px;font-weight:500;margin-bottom:4px">Admin Dashboard</div>
-      <div style="font-size:12px;color:#9b8c84">Enter your admin password to continue</div>
+      <div style="font-size:12px;color:#9b8c84">Enter your admin password</div>
     </div>
-    <div class="err" id="err">Incorrect password. Try again.</div>
+    <div class="err" id="err">Incorrect password.</div>
     <div class="label">Admin Password</div>
     <input class="field" type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn" onclick="doLogin()">Access Dashboard →</button>
   </div>
 </div>
-
 <div class="dashboard" id="dashView">
   <div class="nav">
     <div class="nav-brand">
       <div class="nav-icon">A</div>
-      <div>
-        <div class="nav-title">ARIA Admin</div>
-        <div class="nav-sub">User Management</div>
-      </div>
+      <div><div class="nav-title">ARIA Admin</div><div class="nav-sub">User Management</div></div>
     </div>
     <button class="logout" onclick="doLogout()">Sign Out</button>
   </div>
   <div class="stats">
-    <div class="stat">
-      <div class="stat-val" id="totalCount">0</div>
-      <div class="stat-lbl">Total Users</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val" id="todayCount">0</div>
-      <div class="stat-lbl">Joined Today</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val" id="weekCount">0</div>
-      <div class="stat-lbl">This Week</div>
-    </div>
+    <div class="stat"><div class="stat-val" id="totalCount">0</div><div class="stat-lbl">Total Users</div></div>
+    <div class="stat"><div class="stat-val" id="todayCount">0</div><div class="stat-lbl">Joined Today</div></div>
+    <div class="stat"><div class="stat-val" id="weekCount">0</div><div class="stat-lbl">This Week</div></div>
   </div>
   <div class="toolbar">
     <div class="toolbar-title">All Members</div>
@@ -173,76 +205,47 @@ tr:hover td{background:#f9f6f1}
   </div>
   <div class="refresh" id="refreshTime">Auto-refreshes every 30 seconds</div>
 </div>
-
 <script>
-let adminToken = '';
-
-function doLogin() {
-  const pw = document.getElementById('pw').value;
-  if (!pw) return;
-  adminToken = pw;
-  loadData();
+let adminToken='';
+function doLogin(){
+  const pw=document.getElementById('pw').value;
+  if(!pw)return;
+  adminToken=pw;loadData();
 }
-
-function doLogout() {
-  adminToken = '';
-  document.getElementById('loginView').style.display = 'flex';
-  document.getElementById('dashView').style.display = 'none';
-  document.getElementById('pw').value = '';
+function doLogout(){
+  adminToken='';
+  document.getElementById('loginView').style.display='flex';
+  document.getElementById('dashView').style.display='none';
+  document.getElementById('pw').value='';
 }
-
-async function loadData() {
-  try {
-    const res = await fetch('/api/admin/signups', {
-      headers: { 'x-admin-token': adminToken }
-    });
-    if (res.status === 401) {
-      document.getElementById('err').style.display = 'block';
-      adminToken = '';
-      return;
-    }
-    const data = await res.json();
-    document.getElementById('err').style.display = 'none';
-    document.getElementById('loginView').style.display = 'none';
-    document.getElementById('dashView').style.display = 'block';
-
-    const now = new Date();
-    const todayStr = now.toDateString();
-    const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-
-    let today = 0, week = 0;
-    data.signups.forEach(s => {
-      const d = new Date(s.joined);
-      if (d.toDateString() === todayStr) today++;
-      if (d >= weekAgo) week++;
-    });
-
-    document.getElementById('totalCount').textContent = data.total;
-    document.getElementById('todayCount').textContent = today;
-    document.getElementById('weekCount').textContent = week;
-
-    const tbody = document.getElementById('tbody');
-    if (data.signups.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty">No signups yet. Share your app to get users!</td></tr>';
-    } else {
-      tbody.innerHTML = data.signups.map((s, i) => {
-        const d = new Date(s.joined);
-        const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        return '<tr><td><span class="badge">' + (data.total - i) + '</span></td><td>' + s.name + '</td><td style="color:#c4923a">' + s.email + '</td><td>' + dateStr + ' ' + timeStr + '</td></tr>';
+async function loadData(){
+  try{
+    const res=await fetch('/api/admin/signups',{headers:{'x-admin-token':adminToken}});
+    if(res.status===401){document.getElementById('err').style.display='block';adminToken='';return;}
+    const data=await res.json();
+    document.getElementById('err').style.display='none';
+    document.getElementById('loginView').style.display='none';
+    document.getElementById('dashView').style.display='block';
+    const now=new Date(),todayStr=now.toDateString(),weekAgo=new Date(now-7*24*60*60*1000);
+    let today=0,week=0;
+    data.signups.forEach(s=>{const d=new Date(s.joined);if(d.toDateString()===todayStr)today++;if(d>=weekAgo)week++;});
+    document.getElementById('totalCount').textContent=data.total;
+    document.getElementById('todayCount').textContent=today;
+    document.getElementById('weekCount').textContent=week;
+    const tbody=document.getElementById('tbody');
+    if(data.signups.length===0){
+      tbody.innerHTML='<tr><td colspan="4" class="empty-td">No signups yet. Share your app!</td></tr>';
+    }else{
+      tbody.innerHTML=data.signups.map((s,i)=>{
+        const d=new Date(s.joined);
+        return '<tr><td><span class="badge">'+(data.total-i)+'</span></td><td>'+s.name+'</td><td style="color:#c4923a">'+s.email+'</td><td>'+d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})+'</td></tr>';
       }).join('');
     }
-    document.getElementById('refreshTime').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
-  } catch(e) {
-    console.error(e);
-  }
+    document.getElementById('refreshTime').textContent='Last updated: '+new Date().toLocaleTimeString();
+  }catch(e){console.error(e);}
 }
-
-function exportCSV() {
-  window.open('/api/admin/export?token=' + adminToken, '_blank');
-}
-
-setInterval(() => { if (adminToken) loadData(); }, 30000);
+function exportCSV(){window.open('/api/admin/export?token='+adminToken,'_blank');}
+setInterval(()=>{if(adminToken)loadData();},30000);
 </script>
 </body>
 </html>`);
@@ -251,28 +254,27 @@ setInterval(() => { if (adminToken) loadData(); }, 30000);
 /* ── Claude proxy ── */
 app.post('/api/chat', async (req, res) => {
   const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
-  if (rateLimit(ip)) return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+  if (rateLimit(ip)) return res.status(429).json({ error: 'Too many requests.' });
 
   const { messages, system } = req.body;
   if (!Array.isArray(messages) || messages.length === 0)
     return res.status(400).json({ error: 'messages array is required.' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey)
-    return res.status(500).json({ error: 'Add ANTHROPIC_API_KEY in Render environment variables.' });
+  if (!apiKey) return res.status(500).json({ error: 'Add ANTHROPIC_API_KEY in Render environment variables.' });
 
   try {
     const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method:  'POST',
+      method: 'POST',
       headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
-        system:     system || '',
+        system: system || '',
         messages
       })
     });
