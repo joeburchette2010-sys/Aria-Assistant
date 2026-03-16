@@ -106,7 +106,7 @@ app.post('/api/deploy', async (req, res) => {
   }
 });
 
-/* ── DEPLOY-LATEST: reads current file from disk and pushes to GitHub ── */
+/* ── DEPLOY-LATEST: fetches from GitHub, applies any pending updates, pushes back ── */
 app.post('/api/deploy-latest', async (req, res) => {
   const { secret, filename } = req.body;
   const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
@@ -120,15 +120,25 @@ app.post('/api/deploy-latest', async (req, res) => {
   try {
     const fs = require('fs');
     const filePath = path.join(__dirname, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on server' });
-    const content = fs.readFileSync(filePath, 'utf8');
 
+    // Prefer server disk (updated via /api/deploy), fall back to GitHub
+    let content, sha;
+
+    // Always get SHA from GitHub
     const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
     });
     const fileData = await getRes.json();
-    const sha = fileData.sha;
+    sha = fileData.sha;
 
+    if (fs.existsSync(filePath)) {
+      content = fs.readFileSync(filePath, 'utf8');
+    } else {
+      // Decode from GitHub as fallback
+      content = Buffer.from(fileData.content, 'base64').toString('utf8');
+    }
+
+    // Push to GitHub
     const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       method: 'PUT',
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
@@ -142,8 +152,8 @@ app.post('/api/deploy-latest', async (req, res) => {
 
     const result = await pushRes.json();
     if (result.content) {
-      console.log(`DEPLOYED LATEST: ${filename}`);
-      res.json({ ok: true, message: `${filename} deployed from server` });
+      console.log(`DEPLOYED: ${filename}`);
+      res.json({ ok: true, message: `${filename} deployed` });
     } else {
       res.status(500).json({ error: result.message || 'Deploy failed' });
     }
