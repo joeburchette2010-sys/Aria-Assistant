@@ -202,6 +202,7 @@ body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);dis
       <div class="nav-name">ARIA</div>
     </div>
     <div class="nav-badge" id="navBadge">✉️ Email</div>
+    <div id="navProBadge" style="display:none;margin-left:6px;font-size:10px;padding:3px 10px;border-radius:100px;background:linear-gradient(135deg,#c4923a,#e8b060);color:#1a1612;font-weight:700;letter-spacing:0.5px">PRO</div>
     <div class="nav-avatar" id="navAv" onclick="openSheet()">U</div>
   </div>
   <div class="tabs" id="tabs">
@@ -316,6 +317,9 @@ body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);dis
 const STRIPE_PRO='https://buy.stripe.com/YOUR_PRO_LINK';
 const STRIPE_TEAM='https://buy.stripe.com/YOUR_TEAM_LINK';
 const MAX=20;
+const ADMIN_EMAIL='joeburchette2010@gmail.com';
+const PRO_EMAILS=['joeburchette2010@gmail.com'];
+function isProUser(email){ return PRO_EMAILS.includes((email||'').toLowerCase()); }
 const M={
   email:{label:'Email',icon:'✉️',ph:'Describe the email you need...',tag:'Email Draft',tagBg:'#f0c4cc',tagFg:'#9b3a4a',eH:'Draft emails instantly',eP:'Tell me what to write and get a polished draft.',chips:[['📨 Follow-up','Write a professional follow-up email after our project kickoff meeting'],['🚫 Decline','Draft a polite email declining a meeting request'],['📊 Status','Write an email requesting a project status update'],['🤝 Intro','Draft a warm introduction email to a new client']],sys:`You are ARIA, a professional email writing assistant. Produce a complete email:\n\nSubject: [subject line]\n\n[email body]\n\n---\n💡 Tips: [1-2 customization suggestions]\n\nAdapt tone to context. Keep it concise and human.`},
   calendar:{label:'Schedule',icon:'📅',ph:'Describe a meeting or scheduling need...',tag:'Schedule',tagBg:'#a8d5cc',tagFg:'#2d7a6b',eH:'Master your calendar',eP:'Create agendas, draft invites, plan your week.',chips:[['📋 Agenda','Create a 60-minute project kickoff meeting agenda'],['🗓️ Invite','Write a meeting invite for a quarterly review'],['🔁 Weekly sync','Structure an efficient 30-minute weekly team sync'],['⏰ Time block','Create a time-blocking schedule for a busy day']],sys:`You are ARIA, a scheduling expert. Help create agendas, invites, and time plans. Be structured and time-conscious.`},
@@ -374,12 +378,16 @@ function doSignup(){
 }
 function login(u){
   user=u;count=u.c||0;
+  user.pro = isProUser(u.email);
   sessionStorage.setItem(SK,JSON.stringify(u));
   document.getElementById('authScreen').style.display='none';
   document.getElementById('app').classList.add('on');
   const ini=(u.name||'U').split(' ').map(x=>x[0]).join('').toUpperCase().slice(0,2);
   document.getElementById('navAv').textContent=ini;
   document.getElementById('shEmail').textContent=u.email;
+  // Show Pro badge in nav for pro/admin users
+  const badge = document.getElementById('navProBadge');
+  if(badge) badge.style.display = user.pro ? 'flex' : 'none';
   updateUsage();renderChips();
 }
 function doLogout(){
@@ -448,17 +456,23 @@ function showTyping(){
 }
 function hideTyping(){document.getElementById('tr')?.remove()}
 function updateUsage(){
-  const pct=Math.min((count/MAX)*100,100);
-  document.getElementById('ufill').style.width=pct+'%';
-  document.getElementById('utext').textContent=`${count}/${MAX}`;
-  document.getElementById('upbar').style.display=count>=MAX*.75?'flex':'none';
+  if(user?.pro){
+    document.getElementById('ufill').style.width='100%';
+    document.getElementById('utext').textContent='∞ Pro';
+    document.getElementById('upbar').style.display='none';
+  } else {
+    const pct=Math.min((count/MAX)*100,100);
+    document.getElementById('ufill').style.width=pct+'%';
+    document.getElementById('utext').textContent=`${count}/${MAX}`;
+    document.getElementById('upbar').style.display=(count>=MAX*.75)?'flex':'none';
+  }
   if(user){const u=getU();if(u[user.email])u[user.email].c=count;saveU(u)}
 }
 async function send(){
   const f=document.getElementById('ifield');
   const text=f.value.trim();
   if(!text||busy)return;
-  if(count>=MAX){openUp();return}
+  if(count>=MAX && !user?.pro){openUp();return}
   busy=true;document.getElementById('sbtn').disabled=true;
   addMsg('user',text);hist.push({role:'user',content:text});
   f.value='';f.style.height='auto';
