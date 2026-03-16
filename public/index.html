@@ -168,13 +168,19 @@ body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);dis
       <input class="field" type="email" id="lEmail" placeholder="you@example.com" autocomplete="email">
       <div class="field-label">Password</div>
       <input class="field" type="password" id="lPass" placeholder="••••••••" autocomplete="current-password">
-     <button class="auth-cta" onclick="doLogin()">Sign In →</button>
+      <button class="auth-cta" onclick="doLogin()">Sign In →</button>
       <div style="text-align:center;margin-top:12px">
         <button onclick="showTab('reset')" style="background:none;border:none;font-family:inherit;font-size:12px;color:var(--ink4);cursor:pointer;text-decoration:underline">Forgot password?</button>
       </div>
-      <div style="text-align:center;margin-top:12px">
-        <button onclick="showTab('reset')" style="background:none;border:none;font-family:inherit;font-size:12px;color:var(--ink4);cursor:pointer;text-decoration:underline">Forgot password?</button>
-      </div>
+    </div>
+    <div id="fUp" style="display:none">
+      <div class="field-label">Name</div>
+      <input class="field" type="text" id="uName" placeholder="Jane Smith" autocomplete="name">
+      <div class="field-label">Email</div>
+      <input class="field" type="email" id="uEmail" placeholder="you@example.com" autocomplete="email">
+      <div class="field-label">Password</div>
+      <input class="field" type="password" id="uPass" placeholder="Min. 8 characters" autocomplete="new-password">
+      <button class="auth-cta" onclick="doSignup()">Create Account →</button>
     </div>
     <div id="fReset" style="display:none">
       <div style="text-align:center;margin-bottom:16px;font-size:13px;color:var(--ink3);line-height:1.6">Enter your email and choose a new password.</div>
@@ -186,17 +192,7 @@ body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);dis
       <div style="text-align:center;margin-top:12px">
         <button onclick="showTab('in')" style="background:none;border:none;font-family:inherit;font-size:12px;color:var(--ink4);cursor:pointer;text-decoration:underline">Back to Sign In</button>
       </div>
-    <div id="fUp" style="display:none">
-      <div class="field-label">Name</div>
-      <input class="field" type="text" id="uName" placeholder="Jane Smith" autocomplete="name">
-      <div class="field-label">Email</div>
-      <input class="field" type="email" id="uEmail" placeholder="you@example.com" autocomplete="email">
-      <div class="field-label">Password</div>
-      <input class="field" type="password" id="uPass" placeholder="Min. 8 characters" autocomplete="new-password">
-      <button class="auth-cta" onclick="doSignup()">Create Account →</button>
     </div>
-  </div>
-</div>
 <div id="app">
   <div class="nav">
     <div class="nav-logo">
@@ -355,7 +351,11 @@ function doLogin(){
   if(!e||!p){err('Please fill in all fields.');return}
   const u=getU();
   if(!u[e]){err('No account found. Please sign up.');return}
-  if(u[e].pw!==btoa(p)){err('Incorrect password.');return}
+  if(u[e].pw!==btoa(p)){
+    document.getElementById('aErr').innerHTML='Incorrect password. <button onclick="showTab(\'reset\')" style="background:none;border:none;font-family:inherit;font-size:12px;color:var(--gold);cursor:pointer;font-weight:600;text-decoration:underline">Reset it here →</button>';
+    document.getElementById('aErr').style.display='block';
+    return;
+  }
   login({email:e,name:u[e].name,c:u[e].c||0});
 }
 function doSignup(){
