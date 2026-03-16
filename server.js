@@ -541,10 +541,13 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-/* ── SPA fallback ── */
-app.get('*', (_req, res) =>
-  res.sendFile(path.join(__dirname, 'public', 'index.html'))
-);
+/* ── SPA fallback — no cache so deploys show immediately ── */
+app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.listen(PORT, () =>
   console.log(`ARIA running on port ${PORT} [${PROD ? 'production' : 'dev'}]`)
