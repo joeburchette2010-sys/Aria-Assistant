@@ -465,7 +465,7 @@ async function send(){
   document.getElementById('ihint').textContent='ARIA is thinking…';
   showTyping();count++;updateUsage();
   try{
-    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:M[mode].sys,messages:hist})});
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:M[mode].sys,messages:hist,userEmail:user?.email||'',isPro:user?.pro||false})});
     const data=await res.json();
     if(data.error)throw new Error(data.error);
     const reply=data.content?.map(b=>b.text||'').join('')||'Something went wrong.';
