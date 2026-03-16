@@ -180,7 +180,7 @@ app.post('/api/deploy', async (req, res) => {
   }
 });
 
-/* ── Deploy-latest endpoint ── */
+/* ── Deploy-latest endpoint — fetches from GitHub and re-pushes ── */
 app.post('/api/deploy-latest', async (req, res) => {
   const { secret, filename } = req.body;
   const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
@@ -190,20 +190,22 @@ app.post('/api/deploy-latest', async (req, res) => {
   const email = process.env.GITHUB_EMAIL;
   if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
   try {
-    const filePath = path.join(__dirname, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found: ' + filename });
-    const content = fs.readFileSync(filePath, 'utf8');
+    // Always fetch current content from GitHub — never from stale server disk
     const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
     });
     const fileData = await getRes.json();
+    if (!fileData.sha) return res.status(404).json({ error: 'File not found in GitHub: ' + filename });
     const sha = fileData.sha;
+    // Decode current content from GitHub
+    const currentContent = Buffer.from(fileData.content, 'base64').toString('utf8');
+    // Re-push same content with new commit to trigger Render redeploy
     const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       method: 'PUT',
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: `Auto-deploy: update ${filename}`,
-        content: Buffer.from(content).toString('base64'),
+        content: Buffer.from(currentContent).toString('base64'),
         sha,
         committer: { name: 'ARIA Deploy Bot', email: email || 'deploy@aria.app' }
       })
