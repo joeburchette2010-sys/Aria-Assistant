@@ -1,4 +1,4 @@
-const CACHE = 'aria-v2';
+const CACHE = 'aria-v3-' + '20260316';
 const ASSETS = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -16,6 +16,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  // Always go network-first for API calls
   if (e.request.url.includes('/api/')) {
     e.respondWith(
       fetch(e.request).catch(() =>
@@ -25,6 +26,7 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
+  // Cache-first for everything else (app shell)
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
       const clone = res.clone();
