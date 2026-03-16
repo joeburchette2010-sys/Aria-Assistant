@@ -465,23 +465,47 @@ checkHealth();
 });
 
 /* ── Claude proxy ── */
+
+// Pro emails — admin always gets Pro free
+const PRO_EMAILS = new Set([
+  'joeburchette2010@gmail.com'
+]);
+
+// Add a paid user to Pro (called when Stripe payment confirmed later)
+function grantPro(email) { PRO_EMAILS.add(email.toLowerCase()); }
+
+function getModel(userEmail, isPro) {
+  const email = (userEmail || '').toLowerCase();
+  // Admin email always gets Sonnet
+  if (PRO_EMAILS.has(email)) return 'claude-sonnet-4-20250514';
+  // Paid Pro users get Sonnet
+  if (isPro) return 'claude-sonnet-4-20250514';
+  // Free users get Haiku — same quality, 70% cheaper
+  return 'claude-haiku-4-5-20251001';
+}
+
 app.post('/api/chat', async (req, res) => {
   const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
   if (rateLimit(ip)) return res.status(429).json({ error: 'Too many requests.' });
-  const { messages, system } = req.body;
+  const { messages, system, userEmail, isPro } = req.body;
   if (!Array.isArray(messages) || messages.length === 0)
     return res.status(400).json({ error: 'messages array is required.' });
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Add ANTHROPIC_API_KEY in Render environment variables.' });
+
+  const model = getModel(userEmail, isPro);
+  const tier  = model.includes('sonnet') ? 'Pro' : 'Free';
+  console.log(`CHAT [${tier}] ${userEmail || 'anonymous'} — model: ${model}`);
+
   try {
     const upstream = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, system: system || '', messages })
+      body: JSON.stringify({ model, max_tokens: 1024, system: system || '', messages })
     });
     const data = await upstream.json();
     if (data.error) return res.status(400).json({ error: data.error.message });
-    res.json(data);
+    res.json({ ...data, tier });
   } catch (err) {
     console.error('[proxy] failed to reach Anthropic');
     res.status(502).json({ error: 'Could not reach AI. Please try again.' });
