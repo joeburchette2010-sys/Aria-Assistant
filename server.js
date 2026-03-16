@@ -567,3 +567,330 @@ app.get('*', (_req, res) => {
 app.listen(PORT, () =>
   console.log(`ARIA running on port ${PORT} [${PROD ? 'production' : 'dev'}]`)
 );
+
+/* ── COMMAND CENTER DATA API ── */
+
+// In-memory error log
+const errorLog = [];
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  errorLog.push({ ts: new Date().toISOString(), msg: args.join(' ') });
+  if (errorLog.length > 100) errorLog.shift();
+  originalConsoleError(...args);
+};
+
+app.get('/api/command/stats', adminAuth, (req, res) => {
+  const now = new Date();
+  const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+  const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+  const todaySignups = signups.filter(s => new Date(s.joined) > oneDayAgo);
+  const weekSignups = signups.filter(s => new Date(s.joined) > oneWeekAgo);
+
+  // Daily signup counts for chart (last 7 days)
+  const dailyCounts = [];
+  for (let i = 6; i >= 0; i--) {
+    const day = new Date(now - i * 24 * 60 * 60 * 1000);
+    const dayStr = day.toDateString();
+    const count = signups.filter(s => new Date(s.joined).toDateString() === dayStr).length;
+    dailyCounts.push({
+      label: day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      count
+    });
+  }
+
+  res.json({
+    total: signups.length,
+    today: todaySignups.length,
+    week: weekSignups.length,
+    recentSignups: signups.slice(-5).reverse(),
+    dailyCounts,
+    errors: errorLog.slice(-10).reverse(),
+    uptime: process.uptime(),
+    serverTime: now.toISOString()
+  });
+});
+
+app.post('/api/command/ai', adminAuth, async (req, res) => {
+  const { type } = req.body;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+
+  const stats = {
+    totalUsers: signups.length,
+    recentSignups: signups.slice(-5).map(s => s.name),
+    recentErrors: errorLog.slice(-3).map(e => e.msg)
+  };
+
+  const prompts = {
+    features: `You are ARIA's product advisor. Based on these app stats: ${JSON.stringify(stats)}, suggest the 3 most impactful features to build next for an AI admin assistant app. Be specific and concise. Format as a numbered list.`,
+    newsletter: `You are writing a newsletter update for ARIA, an AI admin assistant app. Stats: ${JSON.stringify(stats)}. Write a short, engaging newsletter update (150 words max) announcing recent progress and what's coming next. Tone: founder building in public, genuine and direct.`,
+    shareholder: `You are writing a shareholder update for ARIA. Stats: ${JSON.stringify(stats)}. Write a professional 200-word shareholder report covering: user growth, product progress, next milestones, and revenue potential. Be data-driven and optimistic but honest.`
+  };
+
+  try {
+    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 512, messages: [{ role: 'user', content: prompts[type] }] })
+    });
+    const data = await upstream.json();
+    if (data.error) return res.status(400).json({ error: data.error.message });
+    res.json({ content: data.content[0].text });
+  } catch (err) {
+    res.status(502).json({ error: 'AI request failed' });
+  }
+});
+
+
+/* ── COMMAND CENTER PAGE ── */
+app.get('/command', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:100vh}
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-card{background:white;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.1)}
+.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
+.brand-icon{width:36px;height:36px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#1a1612}
+.brand-name{font-size:20px;font-weight:300;letter-spacing:3px;text-transform:uppercase}
+.label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b5e56;margin-bottom:6px}
+.field{width:100%;padding:12px 14px;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:14px;outline:none;margin-bottom:14px;background:#f9f6f1;-webkit-appearance:none}
+.field:focus{border-color:#c4923a;background:white}
+.btn{width:100%;padding:13px;background:#1a1612;color:white;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.btn:active{background:#c4923a}
+.err{font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none}
+.dash{display:none;padding:20px;max-width:1000px;margin:0 auto}
+.topnav{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:14px 0;border-bottom:1px solid #ebe2d5}
+.topnav-brand{display:flex;align-items:center;gap:8px}
+.topnav-icon{width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1a1612}
+.topnav-title{font-size:16px;font-weight:500}
+.topnav-sub{font-size:12px;color:#9b8c84}
+.signout{font-size:12px;color:#9b8c84;background:none;border:1px solid #ebe2d5;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:16px;text-align:center}
+.stat-val{font-size:28px;font-weight:600;color:#c4923a;font-family:Georgia,serif}
+.stat-lbl{font-size:11px;color:#9b8c84;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}}
+.panel{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:18px}
+.panel-title{font-size:13px;font-weight:600;color:#1a1612;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.panel-sub{font-size:11px;color:#9b8c84;margin-bottom:14px}
+.ai-btn{padding:9px 16px;background:#1a1612;color:white;border:none;border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px}
+.ai-btn:active{background:#c4923a}
+.ai-btn:disabled{background:#9b8c84;cursor:not-allowed}
+.ai-output{background:#f9f6f1;border:1px solid #ebe2d5;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:#3d3530;white-space:pre-wrap;min-height:60px;display:none}
+.copy-btn{font-size:11px;padding:4px 10px;background:white;border:1px solid #ebe2d5;border-radius:5px;cursor:pointer;font-family:inherit;margin-top:8px;display:none}
+.copy-btn.ok{background:#f0fdf4;border-color:#86efac;color:#166534}
+.error-item{padding:8px 0;border-bottom:1px solid #f3ede4;font-size:12px;color:#dc2626;font-family:monospace;line-height:1.5}
+.error-item:last-child{border:none}
+.error-time{font-size:10px;color:#9b8c84;display:block;margin-bottom:2px;font-family:inherit}
+.signup-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3ede4}
+.signup-item:last-child{border:none}
+.signup-name{font-size:13px;font-weight:500;color:#1a1612}
+.signup-email{font-size:12px;color:#c4923a}
+.signup-time{font-size:11px;color:#9b8c84}
+.empty-msg{font-size:13px;color:#9b8c84;text-align:center;padding:20px 0}
+.chart-wrap{display:flex;align-items:flex-end;gap:6px;height:80px;margin-top:8px}
+.bar-wrap{display:flex;flex-direction:column;align-items:center;flex:1;gap:4px}
+.bar{background:linear-gradient(180deg,#c4923a,#e8b060);border-radius:3px 3px 0 0;width:100%;min-height:2px;transition:height .3s}
+.bar-lbl{font-size:9px;color:#9b8c84;text-align:center}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block}
+.refresh-time{font-size:11px;color:#9b8c84;text-align:center;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="login" id="loginView">
+  <div class="login-card">
+    <div class="brand"><div class="brand-icon">A</div><div class="brand-name">ARIA</div></div>
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="font-size:15px;font-weight:500;margin-bottom:4px">Command Center</div>
+      <div style="font-size:12px;color:#9b8c84">Project oversight & AI insights</div>
+    </div>
+    <div class="err" id="loginErr">Incorrect password.</div>
+    <div class="label">Password</div>
+    <input class="field" type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn" onclick="doLogin()">Access Command Center →</button>
+  </div>
+</div>
+
+<div class="dash" id="dashView">
+  <div class="topnav">
+    <div class="topnav-brand">
+      <div class="topnav-icon">A</div>
+      <div>
+        <div class="topnav-title">ARIA Command Center</div>
+        <div class="topnav-sub"><span class="status-dot"></span> Live · Auto-refreshes every 60s</div>
+      </div>
+    </div>
+    <button class="signout" onclick="doLogout()">Sign Out</button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat"><div class="stat-val" id="totalUsers">—</div><div class="stat-lbl">Total Users</div></div>
+    <div class="stat"><div class="stat-val" id="todayUsers">—</div><div class="stat-lbl">Today</div></div>
+    <div class="stat"><div class="stat-val" id="weekUsers">—</div><div class="stat-lbl">This Week</div></div>
+    <div class="stat"><div class="stat-val" id="uptime">—</div><div class="stat-lbl">Uptime</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">📈 Growth (7 days)</div>
+      <div class="panel-sub">Daily new signups</div>
+      <div class="chart-wrap" id="chartWrap"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">👥 Recent Signups</div>
+      <div class="panel-sub">Latest members</div>
+      <div id="recentSignups"></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">🔴 Error Monitor</div>
+      <div class="panel-sub">Last 10 server errors</div>
+      <div id="errorFeed"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">💡 Feature Suggestions</div>
+      <div class="panel-sub">AI-powered product recommendations</div>
+      <button class="ai-btn" id="featBtn" onclick="getAI('features','featBtn','featOutput','featCopy')">Generate Suggestions</button>
+      <div class="ai-output" id="featOutput"></div>
+      <button class="copy-btn" id="featCopy" onclick="copyText('featOutput','featCopy')">⎘ Copy</button>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">📬 Newsletter Draft</div>
+      <div class="panel-sub">Ready to paste into Substack</div>
+      <button class="ai-btn" id="newsBtn" onclick="getAI('newsletter','newsBtn','newsOutput','newsCopy')">Draft Newsletter</button>
+      <div class="ai-output" id="newsOutput"></div>
+      <button class="copy-btn" id="newsCopy" onclick="copyText('newsOutput','newsCopy')">⎘ Copy</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">📊 Shareholder Report</div>
+      <div class="panel-sub">Weekly progress summary</div>
+      <button class="ai-btn" id="shareBtn" onclick="getAI('shareholder','shareBtn','shareOutput','shareCopy')">Generate Report</button>
+      <div class="ai-output" id="shareOutput"></div>
+      <button class="copy-btn" id="shareCopy" onclick="copyText('shareOutput','shareCopy')">⎘ Copy</button>
+    </div>
+  </div>
+
+  <div class="refresh-time" id="refreshTime">Loading...</div>
+</div>
+
+<script>
+let token = '';
+
+function doLogin() {
+  const pw = document.getElementById('pw').value;
+  if (!pw) return;
+  token = pw;
+  document.getElementById('loginErr').style.display = 'none';
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('dashView').style.display = 'block';
+  loadData();
+}
+
+function doLogout() {
+  token = '';
+  document.getElementById('loginView').style.display = 'flex';
+  document.getElementById('dashView').style.display = 'none';
+  document.getElementById('pw').value = '';
+}
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/command/stats', { headers: { 'x-admin-token': token } });
+    if (res.status === 401) { document.getElementById('loginErr').style.display = 'block'; doLogout(); return; }
+    const d = await res.json();
+
+    document.getElementById('totalUsers').textContent = d.total;
+    document.getElementById('todayUsers').textContent = d.today;
+    document.getElementById('weekUsers').textContent = d.week;
+    document.getElementById('uptime').textContent = Math.floor(d.uptime / 3600) + 'h';
+
+    // Chart
+    const maxCount = Math.max(...d.dailyCounts.map(x => x.count), 1);
+    document.getElementById('chartWrap').innerHTML = d.dailyCounts.map(day => \`
+      <div class="bar-wrap">
+        <div class="bar" style="height:\${Math.max((day.count/maxCount)*70, 2)}px" title="\${day.count} signups"></div>
+        <div class="bar-lbl">\${day.label.split(' ')[1]}</div>
+      </div>\`).join('');
+
+    // Recent signups
+    const signupEl = document.getElementById('recentSignups');
+    if (d.recentSignups.length === 0) {
+      signupEl.innerHTML = '<div class="empty-msg">No signups yet</div>';
+    } else {
+      signupEl.innerHTML = d.recentSignups.map(s => \`
+        <div class="signup-item">
+          <div><div class="signup-name">\${s.name}</div><div class="signup-email">\${s.email}</div></div>
+          <div class="signup-time">\${new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+        </div>\`).join('');
+    }
+
+    // Error feed
+    const errorEl = document.getElementById('errorFeed');
+    if (d.errors.length === 0) {
+      errorEl.innerHTML = '<div class="empty-msg" style="color:#16a34a">✓ No errors detected</div>';
+    } else {
+      errorEl.innerHTML = d.errors.map(e => \`
+        <div class="error-item">
+          <span class="error-time">\${new Date(e.ts).toLocaleTimeString()}</span>
+          \${e.msg.substring(0, 120)}
+        </div>\`).join('');
+    }
+
+    document.getElementById('refreshTime').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    console.error('Load error:', e);
+  }
+}
+
+async function getAI(type, btnId, outputId, copyId) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating...';
+  try {
+    const res = await fetch('/api/command/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({ type })
+    });
+    const data = await res.json();
+    const out = document.getElementById(outputId);
+    const copy = document.getElementById(copyId);
+    out.textContent = data.content || data.error;
+    out.style.display = 'block';
+    copy.style.display = 'inline-block';
+  } catch(e) {
+    document.getElementById(outputId).textContent = 'Failed to generate. Try again.';
+    document.getElementById(outputId).style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = type === 'features' ? 'Regenerate' : type === 'newsletter' ? 'Redraft' : 'Regenerate';
+}
+
+function copyText(outputId, copyId) {
+  const text = document.getElementById(outputId).textContent;
+  navigator.clipboard.writeText(text);
+  const btn = document.getElementById(copyId);
+  btn.textContent = '✓ Copied';
+  btn.classList.add('ok');
+  setTimeout(() => { btn.textContent = '⎘ Copy'; btn.classList.remove('ok'); }, 2000);
+}
+
+setInterval(() => { if (token) loadData(); }, 60000);
+</script>
+</body>
+</html>`);
+});
