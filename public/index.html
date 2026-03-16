@@ -504,7 +504,16 @@ function showNewsletterBar(){if(_newsletterShown||sessionStorage.getItem('aria_n
 function dismissNewsletter(){document.getElementById('newsletterBar').classList.remove('show');sessionStorage.setItem('aria_newsletter','1');}
 renderChips();
 let deferredPrompt=null;
-if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').then(()=>console.log('ARIA SW registered')).catch(e=>console.warn('SW:',e));});}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').then(reg=>{
+    console.log('ARIA SW registered');
+    // Listen for new version messages from service worker
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data?.type === 'CACHE_UPDATED') {
+        toast('✨ App updated! Reloading...');
+        setTimeout(() => window.location.reload(), 1500);
+      }
+    });
+  }).catch(e=>console.warn('SW:',e));});}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;setTimeout(showInstallBanner,20000);});
 function showInstallBanner(){if(sessionStorage.getItem('aria_nodismiss'))return;document.getElementById('installBanner').classList.add('show');}
 function dismissInstall(){document.getElementById('installBanner').classList.remove('show');sessionStorage.setItem('aria_nodismiss','1');}
