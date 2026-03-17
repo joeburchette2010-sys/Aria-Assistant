@@ -16,8 +16,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 /* ── In-memory stores ── */
 const signups  = [];
 const errorLog = [];
-
-/* ── Intercept errors for monitoring ── */
 const _origErr = console.error;
 console.error = (...args) => {
   errorLog.push({ ts: new Date().toISOString(), msg: args.join(' ') });
@@ -25,7 +23,15 @@ console.error = (...args) => {
   _origErr(...args);
 };
 
-/* ── Health check ── */
+/* ── Pro email list ── */
+const PRO_EMAILS = new Set(['joeburchette2010@gmail.com']);
+function grantPro(email) { PRO_EMAILS.add(email.toLowerCase()); }
+function getModel(email, isPro) {
+  if (PRO_EMAILS.has((email||'').toLowerCase()) || isPro) return 'claude-sonnet-4-20250514';
+  return 'claude-haiku-4-5-20251001';
+}
+
+/* ── Health ── */
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 /* ── Rate limiter ── */
@@ -41,90 +47,93 @@ function rateLimit(ip) {
   return false;
 }
 
-/* ── Admin auth middleware ── */
+/* ── Admin auth ── */
 function adminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || req.query.token;
-  const adminPassword = process.env.ADMIN_PASSWORD || 'aria-admin-2025';
-  if (token !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
+  if (token !== (process.env.ADMIN_PASSWORD || 'aria-admin-2025')) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
-/* ── Signup logging + Google Sheets webhook ── */
+/* ── Deploy secret auth ── */
+function deployAuth(secret) {
+  return secret === (process.env.DEPLOY_SECRET || 'aria-deploy-2025');
+}
+
+/* ── GitHub helper ── */
+async function githubPush(filename, content) {
+  const token = process.env.GITHUB_TOKEN;
+  const repo  = process.env.GITHUB_REPO;
+  const email = process.env.GITHUB_EMAIL || 'deploy@aria.app';
+  if (!token || !repo) throw new Error('GitHub env vars not set');
+  const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
+    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+  });
+  const fileData = await getRes.json();
+  if (!fileData.sha) throw new Error('File not found: ' + filename);
+  const ts = new Date().toISOString().replace('T',' ').substring(0,19);
+  const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: `Auto-deploy: ${filename} [${ts}]`,
+      content: Buffer.from(content).toString('base64'),
+      sha: fileData.sha,
+      committer: { name: 'ARIA Deploy Bot', email }
+    })
+  });
+  const result = await pushRes.json();
+  if (!result.content && pushRes.status !== 422) throw new Error(result.message || 'Push failed');
+  return true;
+}
+
+/* ── Signup ── */
 app.post('/api/signup', async (req, res) => {
   const { name, email } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Missing fields' });
   const ts = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
   signups.push({ name, email, joined: new Date().toISOString(), ts });
   console.log(`NEW SIGNUP — Name: ${name} | Email: ${email} | Time: ${ts}`);
-
-  // Google Sheets webhook (set SHEETS_WEBHOOK in Render env vars)
   const webhook = process.env.SHEETS_WEBHOOK;
   if (webhook) {
     try {
-      await fetch(webhook, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, joined: new Date().toISOString(), ts, total: signups.length })
-      });
-    } catch (e) {
-      console.error('Sheets webhook failed:', e.message);
-    }
+      await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, joined: new Date().toISOString(), ts, total: signups.length }) });
+    } catch(e) { console.error('Sheets webhook failed:', e.message); }
   }
   res.json({ ok: true });
 });
 
-/* ── Admin API: signups ── */
+/* ── Admin API ── */
 app.get('/api/admin/signups', adminAuth, (req, res) => {
   res.json({ total: signups.length, signups: signups.slice().reverse() });
 });
-
-/* ── Admin API: CSV export ── */
 app.get('/api/admin/export', adminAuth, (req, res) => {
-  const csv = ['Name,Email,Joined'].concat(
-    signups.map(s => `"${s.name}","${s.email}","${s.ts}"`)
-  ).join('\n');
+  const csv = ['Name,Email,Joined'].concat(signups.map(s => `"${s.name}","${s.email}","${s.ts}"`)).join('\n');
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="aria-users.csv"');
   res.send(csv);
 });
 
-/* ── Command Center: stats ── */
+/* ── Command Center stats ── */
 app.get('/api/command/stats', adminAuth, (req, res) => {
   const now = new Date();
-  const oneDayAgo  = new Date(now - 24 * 60 * 60 * 1000);
-  const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  const oneDayAgo  = new Date(now - 24*60*60*1000);
+  const oneWeekAgo = new Date(now - 7*24*60*60*1000);
   const dailyCounts = [];
   for (let i = 6; i >= 0; i--) {
-    const day = new Date(now - i * 24 * 60 * 60 * 1000);
+    const day = new Date(now - i*24*60*60*1000);
     const dayStr = day.toDateString();
-    dailyCounts.push({
-      label: day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      count: signups.filter(s => new Date(s.joined).toDateString() === dayStr).length
-    });
+    dailyCounts.push({ label: day.toLocaleDateString('en-US',{month:'short',day:'numeric'}), count: signups.filter(s=>new Date(s.joined).toDateString()===dayStr).length });
   }
-  res.json({
-    total:         signups.length,
-    today:         signups.filter(s => new Date(s.joined) > oneDayAgo).length,
-    week:          signups.filter(s => new Date(s.joined) > oneWeekAgo).length,
-    recentSignups: signups.slice(-5).reverse(),
-    allSignups:    signups.slice().reverse(),
-    dailyCounts,
-    errors:        errorLog.slice(-10).reverse(),
-    uptime:        process.uptime(),
-    serverTime:    now.toISOString()
-  });
+  res.json({ total: signups.length, today: signups.filter(s=>new Date(s.joined)>oneDayAgo).length, week: signups.filter(s=>new Date(s.joined)>oneWeekAgo).length, recentSignups: signups.slice(-5).reverse(), allSignups: signups.slice().reverse(), dailyCounts, errors: errorLog.slice(-10).reverse(), uptime: process.uptime() });
 });
 
-/* ── Command Center: AI insights ── */
+/* ── Command Center AI ── */
 app.post('/api/command/ai', adminAuth, async (req, res) => {
   const { type } = req.body;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-  const stats = {
-    totalUsers:    signups.length,
-    recentSignups: signups.slice(-5).map(s => s.name),
-    recentErrors:  errorLog.slice(-3).map(e => e.msg)
-  };
+  const stats = { totalUsers: signups.length, recentSignups: signups.slice(-5).map(s=>s.name), recentErrors: errorLog.slice(-3).map(e=>e.msg) };
   const prompts = {
     features:    `You are ARIA's product advisor. Based on these stats: ${JSON.stringify(stats)}, suggest the 3 most impactful features to build next for an AI admin assistant. Be specific. Format as numbered list.`,
     newsletter:  `Write a short engaging newsletter update (150 words max) for ARIA, an AI admin assistant. Stats: ${JSON.stringify(stats)}. Tone: founder building in public, genuine and direct.`,
@@ -142,17 +151,14 @@ app.post('/api/command/ai', adminAuth, async (req, res) => {
     const data = await r.json();
     if (data.error) return res.status(400).json({ error: data.error.message });
     res.json({ content: data.content[0].text });
-  } catch (err) {
-    res.status(502).json({ error: 'AI request failed' });
-  }
+  } catch(err) { res.status(502).json({ error: 'AI request failed' }); }
 });
 
-/* ── Discord Bot: post message to channel ── */
+/* ── Discord Bot post ── */
 app.post('/api/discord/post', adminAuth, async (req, res) => {
   const { channelId, content } = req.body;
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return res.status(500).json({ error: 'DISCORD_BOT_TOKEN not set' });
-  if (!channelId || !content) return res.status(400).json({ error: 'Missing channelId or content' });
   try {
     const r = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
       method: 'POST',
@@ -160,462 +166,435 @@ app.post('/api/discord/post', adminAuth, async (req, res) => {
       body: JSON.stringify({ content: content.substring(0, 2000) })
     });
     const data = await r.json();
-    if (data.id) {
-      console.log(`DISCORD POST: channel ${channelId}`);
-      res.json({ ok: true, messageId: data.id });
-    } else {
-      res.status(500).json({ error: data.message || 'Discord post failed' });
-    }
-  } catch (err) {
-    res.status(502).json({ error: 'Discord post failed: ' + err.message });
-  }
+    if (data.id) { console.log(`DISCORD POST: channel ${channelId}`); res.json({ ok: true }); }
+    else res.status(500).json({ error: data.message || 'Discord post failed' });
+  } catch(err) { res.status(502).json({ error: 'Discord failed: ' + err.message }); }
 });
 
-
+/* ── Deploy endpoint (accepts content from outside) ── */
 app.post('/api/deploy', async (req, res) => {
   const { secret, filename, content } = req.body;
-  const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
-  if (secret !== deploySecret) return res.status(401).json({ error: 'Invalid deploy secret' });
-  const token = process.env.GITHUB_TOKEN;
-  const repo  = process.env.GITHUB_REPO;
-  const email = process.env.GITHUB_EMAIL;
-  if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
-  try {
-    const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
-    });
-    const fileData = await getRes.json();
-    const sha = fileData.sha;
-    const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-      method: 'PUT',
-      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `Auto-deploy: update ${filename}`,
-        content: Buffer.from(content).toString('base64'),
-        sha,
-        committer: { name: 'ARIA Deploy Bot', email: email || 'deploy@aria.app' }
-      })
-    });
-    const result = await pushRes.json();
-    if (result.content) { console.log(`DEPLOYED: ${filename}`); res.json({ ok: true }); }
-    else res.status(500).json({ error: result.message || 'Deploy failed' });
-  } catch (err) {
-    res.status(502).json({ error: 'Deploy failed: ' + err.message });
-  }
+  if (!deployAuth(secret)) return res.status(401).json({ error: 'Invalid deploy secret' });
+  try { await githubPush(filename, content); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-/* ── Deploy-latest endpoint — fetches from GitHub and re-pushes ── */
+/* ── Deploy-latest endpoint (reads from GitHub) ── */
 app.post('/api/deploy-latest', async (req, res) => {
   const { secret, filename } = req.body;
-  const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
-  if (secret !== deploySecret) return res.status(401).json({ error: 'Invalid deploy secret' });
-  const token = process.env.GITHUB_TOKEN;
-  const repo  = process.env.GITHUB_REPO;
-  const email = process.env.GITHUB_EMAIL;
-  if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
+  if (!deployAuth(secret)) return res.status(401).json({ error: 'Invalid deploy secret' });
   try {
+    const token = process.env.GITHUB_TOKEN;
+    const repo  = process.env.GITHUB_REPO;
+    if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
     const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
     });
     const fileData = await getRes.json();
-    if (!fileData.sha) return res.status(404).json({ error: 'File not found in GitHub: ' + filename });
-    const sha = fileData.sha;
-    // Decode content — strip newlines added by GitHub base64 encoding
-    const currentContent = Buffer.from(fileData.content.replace(/\n/g,''), 'base64').toString('utf8');
-    // Add timestamp to commit message to force unique commit
-    const ts = new Date().toISOString().replace('T',' ').substring(0,19);
-    const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-      method: 'PUT',
-      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `Auto-deploy: ${filename} [${ts}]`,
-        content: Buffer.from(currentContent).toString('base64'),
-        sha,
-        committer: { name: 'ARIA Deploy Bot', email: email || 'deploy@aria.app' }
-      })
-    });
-    const result = await pushRes.json();
-    // 422 = nothing changed, treat as success
-    if (result.content || pushRes.status === 422) {
-      console.log(`DEPLOYED: ${filename}`);
-      res.json({ ok: true, message: `${filename} deployed` });
-    } else {
-      res.status(500).json({ error: result.message || 'Deploy failed' });
-    }
-  } catch (err) {
-    res.status(502).json({ error: 'Deploy failed: ' + err.message });
-  }
+    if (!fileData.sha) return res.status(404).json({ error: 'File not found: ' + filename });
+    const content = Buffer.from(fileData.content.replace(/\n/g,''), 'base64').toString('utf8');
+    await githubPush(filename, content);
+    res.json({ ok: true, message: `${filename} deployed` });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-/* ── UNIFIED DASHBOARD (Admin + Command Center combined) ── */
-app.get('/admin', (_req, res) => { res.redirect('/command'); });
+/* ── Admin dashboard (redirects to command) ── */
+app.get('/admin', (_req, res) => res.redirect('/command'));
 
-app.get('/command', (_req, res) => {
-  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA Command Center</title><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:100vh}.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}.login-card{background:white;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.1)}.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}.brand-icon{width:36px;height:36px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#1a1612}.brand-name{font-size:20px;font-weight:300;letter-spacing:3px;text-transform:uppercase}.label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b5e56;margin-bottom:6px}.field{width:100%;padding:12px 14px;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:14px;outline:none;margin-bottom:14px;background:#f9f6f1;-webkit-appearance:none}.field:focus{border-color:#c4923a;background:white}.btn{width:100%;padding:13px;background:#1a1612;color:white;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}.btn:active{background:#c4923a}.err{font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none}.dash{display:none;padding:20px;max-width:1000px;margin:0 auto}.topnav{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:14px 0;border-bottom:1px solid #ebe2d5}.topnav-left{display:flex;align-items:center;gap:8px}.topnav-icon{width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1a1612}.topnav-title{font-size:16px;font-weight:500}.topnav-sub{font-size:12px;color:#9b8c84}.signout{font-size:12px;color:#9b8c84;background:none;border:1px solid #ebe2d5;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}.tabs{display:flex;gap:8px;margin-bottom:20px}.tab-btn{padding:8px 16px;border-radius:100px;border:1.5px solid #ebe2d5;background:#f9f6f1;font-family:inherit;font-size:12px;font-weight:500;color:#9b8c84;cursor:pointer}.tab-btn.active{background:#1a1612;color:white;border-color:#1a1612}.tab-content{display:none}.tab-content.active{display:block}.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}.stat{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:16px;text-align:center}.stat-val{font-size:28px;font-weight:600;color:#c4923a;font-family:Georgia,serif}.stat-lbl{font-size:11px;color:#9b8c84;text-transform:uppercase;letter-spacing:1px;margin-top:4px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}@media(max-width:600px){.grid2{grid-template-columns:1fr}}.panel{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:18px;margin-bottom:16px}.panel-title{font-size:13px;font-weight:600;color:#1a1612;margin-bottom:4px}.panel-sub{font-size:11px;color:#9b8c84;margin-bottom:14px}.ai-btn{padding:9px 16px;background:#1a1612;color:white;border:none;border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px}.ai-btn:active{background:#c4923a}.ai-btn:disabled{background:#9b8c84;cursor:not-allowed}.ai-output{background:#f9f6f1;border:1px solid #ebe2d5;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:#3d3530;white-space:pre-wrap;min-height:60px;display:none}.copy-btn{font-size:11px;padding:4px 10px;background:white;border:1px solid #ebe2d5;border-radius:5px;cursor:pointer;font-family:inherit;margin-top:8px;display:none}.copy-btn.ok{background:#f0fdf4;border-color:#86efac;color:#166534}.error-item{padding:8px 0;border-bottom:1px solid #f3ede4;font-size:12px;color:#dc2626;font-family:monospace;line-height:1.5}.error-item:last-child{border:none}.error-time{font-size:10px;color:#9b8c84;display:block;margin-bottom:2px;font-family:inherit}.signup-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3ede4}.signup-item:last-child{border:none}.signup-name{font-size:13px;font-weight:500;color:#1a1612}.signup-email{font-size:12px;color:#c4923a}.signup-time{font-size:11px;color:#9b8c84}.empty-msg{font-size:13px;color:#9b8c84;text-align:center;padding:20px 0}.chart-wrap{display:flex;align-items:flex-end;gap:6px;height:80px;margin-top:8px}.bar-wrap{display:flex;flex-direction:column;align-items:center;flex:1;gap:4px}.bar{background:linear-gradient(180deg,#c4923a,#e8b060);border-radius:3px 3px 0 0;width:100%;min-height:2px}.bar-lbl{font-size:9px;color:#9b8c84;text-align:center}.status-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:4px}.refresh-time{font-size:11px;color:#9b8c84;text-align:center;margin-top:8px}.export-btn{font-size:12px;padding:7px 14px;background:#1a1612;color:white;border:none;border-radius:7px;cursor:pointer;font-family:inherit}.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:100px;background:#f0d9a8;color:#7a5a1a}table{width:100%;border-collapse:collapse}th{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#9b8c84;padding:10px 14px;text-align:left;border-bottom:1px solid #ebe2d5;background:#f9f6f1}td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f3ede4;color:#3d3530}tr:last-child td{border:none}</style></head><body>
-<div class="login" id="loginView">
-  <div class="login-card">
-    <div class="brand"><div class="brand-icon">A</div><div class="brand-name">ARIA</div></div>
+/* ── Command Center ── */
+app.get('/command', (_req, res) => res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:100vh}
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.lcard{background:white;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.1)}
+.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
+.bicon{width:36px;height:36px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#1a1612}
+.bname{font-size:20px;font-weight:300;letter-spacing:3px;text-transform:uppercase}
+.lbl{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b5e56;margin-bottom:6px}
+.field{width:100%;padding:12px 14px;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:14px;outline:none;margin-bottom:14px;background:#f9f6f1;-webkit-appearance:none}
+.field:focus{border-color:#c4923a;background:white}
+.btn{width:100%;padding:13px;background:#1a1612;color:white;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.btn:active{background:#c4923a}
+.err{font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none}
+.dash{display:none;padding:20px;max-width:1000px;margin:0 auto}
+.topnav{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:14px 0;border-bottom:1px solid #ebe2d5}
+.tnleft{display:flex;align-items:center;gap:8px}
+.tnicon{width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1a1612}
+.tntitle{font-size:16px;font-weight:500}
+.tnsub{font-size:12px;color:#9b8c84}
+.signout{font-size:12px;color:#9b8c84;background:none;border:1px solid #ebe2d5;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.tab-btn{padding:8px 16px;border-radius:100px;border:1.5px solid #ebe2d5;background:#f9f6f1;font-family:inherit;font-size:12px;font-weight:500;color:#9b8c84;cursor:pointer}
+.tab-btn.active{background:#1a1612;color:white;border-color:#1a1612}
+.tab-content{display:none}.tab-content.active{display:block}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:16px;text-align:center}
+.sval{font-size:28px;font-weight:600;color:#c4923a;font-family:Georgia,serif}
+.slbl{font-size:11px;color:#9b8c84;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:600px){.g2{grid-template-columns:1fr}}
+.panel{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:18px;margin-bottom:16px}
+.ptitle{font-size:13px;font-weight:600;color:#1a1612;margin-bottom:4px}
+.psub{font-size:11px;color:#9b8c84;margin-bottom:14px}
+.abtn{padding:9px 16px;background:#1a1612;color:white;border:none;border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px}
+.abtn:active{background:#c4923a}.abtn:disabled{background:#9b8c84;cursor:not-allowed}
+.aout{background:#f9f6f1;border:1px solid #ebe2d5;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:#3d3530;white-space:pre-wrap;min-height:60px;display:none;max-height:200px;overflow-y:auto}
+.cbtn{font-size:11px;padding:4px 10px;background:white;border:1px solid #ebe2d5;border-radius:5px;cursor:pointer;font-family:inherit;margin-top:8px;margin-right:6px;display:none}
+.cbtn.ok{background:#f0fdf4;border-color:#86efac;color:#166534}
+.dbtn{font-size:11px;padding:4px 10px;background:#5865F2;color:white;border:none;border-radius:5px;cursor:pointer;font-family:inherit;margin-top:8px;display:none}
+.eitem{padding:8px 0;border-bottom:1px solid #f3ede4;font-size:12px;color:#dc2626;font-family:monospace;line-height:1.5}
+.eitem:last-child{border:none}
+.etime{font-size:10px;color:#9b8c84;display:block;margin-bottom:2px;font-family:inherit}
+.sitem{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3ede4}
+.sitem:last-child{border:none}
+.sname{font-size:13px;font-weight:500;color:#1a1612}
+.semail{font-size:12px;color:#c4923a}
+.stime{font-size:11px;color:#9b8c84}
+.empty{font-size:13px;color:#9b8c84;text-align:center;padding:20px 0}
+.chart{display:flex;align-items:flex-end;gap:6px;height:80px;margin-top:8px}
+.bwrap{display:flex;flex-direction:column;align-items:center;flex:1;gap:4px}
+.bar{background:linear-gradient(180deg,#c4923a,#e8b060);border-radius:3px 3px 0 0;width:100%;min-height:2px}
+.blbl{font-size:9px;color:#9b8c84;text-align:center}
+.sdot{width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;margin-right:4px}
+.rtime{font-size:11px;color:#9b8c84;text-align:center;margin-top:8px}
+.expbtn{font-size:12px;padding:7px 14px;background:#1a1612;color:white;border:none;border-radius:7px;cursor:pointer;font-family:inherit}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:100px;background:#f0d9a8;color:#7a5a1a}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#9b8c84;padding:10px 14px;text-align:left;border-bottom:1px solid #ebe2d5;background:#f9f6f1}
+td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f3ede4;color:#3d3530}
+tr:last-child td{border:none}
+</style>
+</head>
+<body>
+<div class="login" id="cc-login">
+  <div class="lcard">
+    <div class="brand"><div class="bicon">A</div><div class="bname">ARIA</div></div>
     <div style="text-align:center;margin-bottom:22px">
       <div style="font-size:15px;font-weight:500;margin-bottom:4px">Command Center</div>
       <div style="font-size:12px;color:#9b8c84">Unified project dashboard</div>
     </div>
-    <div class="err" id="loginErr">Incorrect password.</div>
-    <div class="label">Password</div>
-    <input class="field" type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
-    <button class="btn" onclick="doLogin()">Access Command Center</button>
+    <div class="err" id="cc-err">Incorrect password.</div>
+    <div class="lbl">Password</div>
+    <input class="field" type="password" id="cc-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')ccLogin()">
+    <button class="btn" onclick="ccLogin()">Access Command Center</button>
   </div>
 </div>
-<div class="dash" id="dashView">
+<div class="dash" id="cc-dash">
   <div class="topnav">
-    <div class="topnav-left">
-      <div class="topnav-icon">A</div>
-      <div>
-        <div class="topnav-title">ARIA Command Center</div>
-        <div class="topnav-sub"><span class="status-dot"></span>Live</div>
-      </div>
+    <div class="tnleft">
+      <div class="tnicon">A</div>
+      <div><div class="tntitle">ARIA Command Center</div><div class="tnsub"><span class="sdot"></span>Live</div></div>
     </div>
-    <button class="signout" onclick="doLogout()">Sign Out</button>
+    <button class="signout" onclick="ccLogout()">Sign Out</button>
   </div>
   <div class="tabs">
-    <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
-    <button class="tab-btn" onclick="showTab('members')">Members</button>
-    <button class="tab-btn" onclick="showTab('ai')">AI Tools</button>
-    <button class="tab-btn" onclick="showTab('errors')">Errors</button>
+    <button class="tab-btn active" onclick="ccTab('overview')">Overview</button>
+    <button class="tab-btn" onclick="ccTab('members')">Members</button>
+    <button class="tab-btn" onclick="ccTab('ai')">AI Tools</button>
+    <button class="tab-btn" onclick="ccTab('errors')">Errors</button>
   </div>
-
-  <!-- OVERVIEW TAB -->
-  <div class="tab-content active" id="tab-overview">
-    <div class="stats-grid">
-      <div class="stat"><div class="stat-val" id="totalUsers">0</div><div class="stat-lbl">Total Users</div></div>
-      <div class="stat"><div class="stat-val" id="todayUsers">0</div><div class="stat-lbl">Today</div></div>
-      <div class="stat"><div class="stat-val" id="weekUsers">0</div><div class="stat-lbl">This Week</div></div>
-      <div class="stat"><div class="stat-val" id="uptime">0h</div><div class="stat-lbl">Uptime</div></div>
+  <div class="tab-content active" id="cc-overview">
+    <div class="sgrid">
+      <div class="stat"><div class="sval" id="cc-total">0</div><div class="slbl">Total Users</div></div>
+      <div class="stat"><div class="sval" id="cc-today">0</div><div class="slbl">Today</div></div>
+      <div class="stat"><div class="sval" id="cc-week">0</div><div class="slbl">This Week</div></div>
+      <div class="stat"><div class="sval" id="cc-uptime">0h</div><div class="slbl">Uptime</div></div>
     </div>
-    <div class="grid2">
-      <div class="panel">
-        <div class="panel-title">Growth (7 days)</div>
-        <div class="panel-sub">Daily new signups</div>
-        <div class="chart-wrap" id="chartWrap"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">Recent Signups</div>
-        <div class="panel-sub">Latest 5 members</div>
-        <div id="recentSignups"></div>
-      </div>
+    <div class="g2">
+      <div class="panel"><div class="ptitle">Growth (7 days)</div><div class="psub">Daily signups</div><div class="chart" id="cc-chart"></div></div>
+      <div class="panel"><div class="ptitle">Recent Signups</div><div class="psub">Latest 5 members</div><div id="cc-recent"></div></div>
     </div>
   </div>
-
-  <!-- MEMBERS TAB -->
-  <div class="tab-content" id="tab-members">
+  <div class="tab-content" id="cc-members">
     <div class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div><div class="panel-title">All Members</div><div class="panel-sub">Complete signup list</div></div>
-        <button class="export-btn" onclick="exportCSV()">Export CSV</button>
+        <div><div class="ptitle">All Members</div><div class="psub">Complete list</div></div>
+        <button class="expbtn" onclick="ccExport()">Export CSV</button>
       </div>
-      <table>
-        <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Joined</th></tr></thead>
-        <tbody id="membersTable"></tbody>
-      </table>
+      <table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Joined</th></tr></thead><tbody id="cc-table"></tbody></table>
     </div>
   </div>
-
-  <!-- AI TOOLS TAB -->
-  <div class="tab-content" id="tab-ai">
-    <div class="grid2">
-      <div class="panel">
-        <div class="panel-title">Feature Suggestions</div>
-        <div class="panel-sub">AI product recommendations</div>
-        <button class="ai-btn" id="featBtn" onclick="getAI('features','featBtn','featOutput','featCopy')">Generate</button>
-        <div class="ai-output" id="featOutput"></div>
-        <button class="copy-btn" id="featCopy" onclick="copyText('featOutput','featCopy')">Copy</button>
-      </div>
-      <div class="panel">
-        <div class="panel-title">Newsletter Draft</div>
-        <div class="panel-sub">Ready for Substack</div>
-        <button class="ai-btn" id="newsBtn" onclick="getAI('newsletter','newsBtn','newsOutput','newsCopy')">Draft</button>
-        <div class="ai-output" id="newsOutput"></div>
-        <button class="copy-btn" id="newsCopy" onclick="copyText('newsOutput','newsCopy')">Copy</button>
-      </div>
+  <div class="tab-content" id="cc-ai">
+    <div class="g2">
+      <div class="panel"><div class="ptitle">Feature Suggestions</div><div class="psub">AI product advice</div><button class="abtn" id="featBtn" onclick="ccAI('features','featBtn','featOut','featCopy')">Generate</button><div class="aout" id="featOut"></div><button class="cbtn" id="featCopy" onclick="ccCopy('featOut','featCopy')">Copy</button></div>
+      <div class="panel"><div class="ptitle">Newsletter Draft</div><div class="psub">Ready for Substack</div><button class="abtn" id="newsBtn" onclick="ccAI('newsletter','newsBtn','newsOut','newsCopy')">Draft</button><div class="aout" id="newsOut"></div><button class="cbtn" id="newsCopy" onclick="ccCopy('newsOut','newsCopy')">Copy</button></div>
     </div>
-    <div class="grid2">
-      <div class="panel">
-        <div class="panel-title">Reddit Post</div>
-        <div class="panel-sub">Ready for r/SideProject</div>
-        <button class="ai-btn" id="redditBtn" onclick="getAI('reddit','redditBtn','redditOutput','redditCopy')">Draft</button>
-        <div class="ai-output" id="redditOutput"></div>
-        <button class="copy-btn" id="redditCopy" onclick="copyText('redditOutput','redditCopy')">Copy</button>
-      </div>
-      <div class="panel">
-        <div class="panel-title">Discord Content</div>
-        <div class="panel-sub">Welcome + announcements</div>
-        <button class="ai-btn" id="discordBtn" onclick="getAI('discord','discordBtn','discordOutput','discordCopy')">Generate</button>
-        <div class="ai-output" id="discordOutput"></div>
-        <button class="copy-btn" id="discordCopy" onclick="copyText('discordOutput','discordCopy')">Copy</button>
-        <button class="copy-btn" id="discordPostGeneral" style="display:none;background:#5865F2;color:white;border-color:#5865F2" onclick="postToDiscord('general',document.getElementById('discordOutput').textContent,'discordPostGeneral')">📤 Post to #general</button>
-        <button class="copy-btn" id="discordPostUpdates" style="display:none;background:#5865F2;color:white;border-color:#5865F2;margin-left:6px" onclick="postToDiscord('aria-updates',document.getElementById('discordOutput').textContent,'discordPostUpdates')">📤 Post to #aria-updates</button>
-      </div>
+    <div class="g2">
+      <div class="panel"><div class="ptitle">Reddit Post</div><div class="psub">Ready for r/SideProject</div><button class="abtn" id="redditBtn" onclick="ccAI('reddit','redditBtn','redditOut','redditCopy')">Draft</button><div class="aout" id="redditOut"></div><button class="cbtn" id="redditCopy" onclick="ccCopy('redditOut','redditCopy')">Copy</button></div>
+      <div class="panel"><div class="ptitle">Discord Content</div><div class="psub">Welcome + announcements</div><button class="abtn" id="discordBtn" onclick="ccAI('discord','discordBtn','discordOut','discordCopy')">Generate</button><div class="aout" id="discordOut"></div><button class="cbtn" id="discordCopy" onclick="ccCopy('discordOut','discordCopy')">Copy</button><button class="dbtn" id="discordPostGeneral" onclick="ccDiscord('general','discordOut','discordPostGeneral')">Post to #general</button><button class="dbtn" id="discordPostUpdates" onclick="ccDiscord('aria-updates','discordOut','discordPostUpdates')" style="margin-left:6px">Post to #aria-updates</button></div>
     </div>
-    <div class="panel">
-      <div class="panel-title">Shareholder Report</div>
-      <div class="panel-sub">Weekly progress summary</div>
-      <button class="ai-btn" id="shareBtn" onclick="getAI('shareholder','shareBtn','shareOutput','shareCopy')">Generate</button>
-      <div class="ai-output" id="shareOutput"></div>
-      <button class="copy-btn" id="shareCopy" onclick="copyText('shareOutput','shareCopy')">Copy</button>
-    </div>
+    <div class="panel"><div class="ptitle">Shareholder Report</div><div class="psub">Weekly summary</div><button class="abtn" id="shareBtn" onclick="ccAI('shareholder','shareBtn','shareOut','shareCopy')">Generate</button><div class="aout" id="shareOut"></div><button class="cbtn" id="shareCopy" onclick="ccCopy('shareOut','shareCopy')">Copy</button></div>
   </div>
-
-  <!-- ERRORS TAB -->
-  <div class="tab-content" id="tab-errors">
-    <div class="panel">
-      <div class="panel-title">Error Monitor</div>
-      <div class="panel-sub">Last 10 server errors — auto-refreshes every 60s</div>
-      <div id="errorFeed"></div>
-    </div>
+  <div class="tab-content" id="cc-errors">
+    <div class="panel"><div class="ptitle">Error Monitor</div><div class="psub">Last 10 server errors</div><div id="cc-errors-feed"></div></div>
   </div>
-
-  <div class="refresh-time" id="refreshTime">Loading...</div>
+  <div class="rtime" id="cc-refresh">Loading...</div>
 </div>
 <script>
-let token='';
-function doLogin(){
-  const pw=document.getElementById('pw').value;
+const DISCORD_CHANNELS={'general':'1483261401664458972','aria-updates':'1483261092062040184','getting-started':'1483262143426990282'};
+let ccToken='';
+function ccLogin(){
+  const pw=document.getElementById('cc-pw').value;
   if(!pw)return;
-  token=pw;
-  document.getElementById('loginErr').style.display='none';
-  document.getElementById('loginView').style.display='none';
-  document.getElementById('dashView').style.display='block';
-  loadData();
+  ccToken=pw;
+  document.getElementById('cc-err').style.display='none';
+  document.getElementById('cc-login').style.display='none';
+  document.getElementById('cc-dash').style.display='block';
+  ccLoad();
 }
-function doLogout(){
-  token='';
-  document.getElementById('loginView').style.display='flex';
-  document.getElementById('dashView').style.display='none';
-  document.getElementById('pw').value='';
+function ccLogout(){
+  ccToken='';
+  document.getElementById('cc-login').style.display='flex';
+  document.getElementById('cc-dash').style.display='none';
+  document.getElementById('cc-pw').value='';
 }
-function showTab(name){
+function ccTab(name){
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',['overview','members','ai','errors'][i]===name));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('cc-'+name).classList.add('active');
 }
-async function loadData(){
+async function ccLoad(){
   try{
-    const res=await fetch('/api/command/stats',{headers:{'x-admin-token':token}});
-    if(res.status===401){document.getElementById('loginErr').style.display='block';doLogout();return;}
+    const res=await fetch('/api/command/stats',{headers:{'x-admin-token':ccToken}});
+    if(res.status===401){document.getElementById('cc-err').style.display='block';ccLogout();return;}
     const d=await res.json();
-    document.getElementById('totalUsers').textContent=d.total;
-    document.getElementById('todayUsers').textContent=d.today;
-    document.getElementById('weekUsers').textContent=d.week;
-    document.getElementById('uptime').textContent=Math.floor(d.uptime/3600)+'h';
-    const maxCount=Math.max(...d.dailyCounts.map(x=>x.count),1);
-    document.getElementById('chartWrap').innerHTML=d.dailyCounts.map(day=>'<div class="bar-wrap"><div class="bar" style="height:'+Math.max((day.count/maxCount)*70,2)+'px"></div><div class="bar-lbl">'+day.label.split(' ')[1]+'</div></div>').join('');
-    const signupEl=document.getElementById('recentSignups');
-    signupEl.innerHTML=d.recentSignups.length===0?'<div class="empty-msg">No signups yet</div>':d.recentSignups.map(s=>'<div class="signup-item"><div><div class="signup-name">'+s.name+'</div><div class="signup-email">'+s.email+'</div></div><div class="signup-time">'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</div></div>').join('');
-    const tbody=document.getElementById('membersTable');
+    document.getElementById('cc-total').textContent=d.total;
+    document.getElementById('cc-today').textContent=d.today;
+    document.getElementById('cc-week').textContent=d.week;
+    document.getElementById('cc-uptime').textContent=Math.floor(d.uptime/3600)+'h';
+    const max=Math.max(...d.dailyCounts.map(x=>x.count),1);
+    document.getElementById('cc-chart').innerHTML=d.dailyCounts.map(day=>'<div class="bwrap"><div class="bar" style="height:'+Math.max((day.count/max)*70,2)+'px"></div><div class="blbl">'+day.label.split(' ')[1]+'</div></div>').join('');
+    const rec=document.getElementById('cc-recent');
+    rec.innerHTML=d.recentSignups.length===0?'<div class="empty">No signups yet</div>':d.recentSignups.map(s=>'<div class="sitem"><div><div class="sname">'+s.name+'</div><div class="semail">'+s.email+'</div></div><div class="stime">'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</div></div>').join('');
+    const tbody=document.getElementById('cc-table');
     tbody.innerHTML=d.allSignups.length===0?'<tr><td colspan="4" style="text-align:center;padding:30px;color:#9b8c84">No members yet</td></tr>':d.allSignups.map((s,i)=>'<tr><td><span class="badge">'+(d.total-i)+'</span></td><td>'+s.name+'</td><td style="color:#c4923a">'+s.email+'</td><td>'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+'</td></tr>').join('');
-    const errorEl=document.getElementById('errorFeed');
-    errorEl.innerHTML=d.errors.length===0?'<div class="empty-msg" style="color:#16a34a">No errors detected</div>':d.errors.map(e=>'<div class="error-item"><span class="error-time">'+new Date(e.ts).toLocaleTimeString()+'</span>'+e.msg.substring(0,120)+'</div>').join('');
-    document.getElementById('refreshTime').textContent='Last updated: '+new Date().toLocaleTimeString();
+    const ef=document.getElementById('cc-errors-feed');
+    ef.innerHTML=d.errors.length===0?'<div class="empty" style="color:#16a34a">No errors detected</div>':d.errors.map(e=>'<div class="eitem"><span class="etime">'+new Date(e.ts).toLocaleTimeString()+'</span>'+e.msg.substring(0,120)+'</div>').join('');
+    document.getElementById('cc-refresh').textContent='Last updated: '+new Date().toLocaleTimeString();
   }catch(e){console.error(e);}
 }
-const DISCORD_CHANNELS = {
-  'aria-updates': '1483261092062040184',
-  'general': '1483261401664458972',
-  'getting-started': '1483262143426990282'
-};
-
-async function postToDiscord(channelName, content, btnId) {
-  const btn = document.getElementById(btnId);
-  if (!DISCORD_CHANNELS[channelName]) { alert('Channel not found'); return; }
-  btn.disabled = true;
-  btn.textContent = 'Posting...';
-  try {
-    const res = await fetch('/api/discord/post', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
-      body: JSON.stringify({ channelId: DISCORD_CHANNELS[channelName], content })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      btn.textContent = '✓ Posted!';
-      btn.style.background = '#16a34a';
-      setTimeout(() => { btn.disabled = false; btn.textContent = '📤 Post to #' + channelName; btn.style.background = ''; }, 3000);
-    } else {
-      btn.textContent = '✗ Failed';
-      btn.disabled = false;
-      alert('Failed: ' + (data.error || 'Unknown error'));
-    }
-  } catch(e) {
-    btn.textContent = '✗ Error';
-    btn.disabled = false;
-  }
-}
+async function ccAI(type,btnId,outId,copyId){
   const btn=document.getElementById(btnId);
   btn.disabled=true;btn.textContent='Generating...';
   try{
-    const res=await fetch('/api/command/ai',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':token},body:JSON.stringify({type})});
+    const res=await fetch('/api/command/ai',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':ccToken},body:JSON.stringify({type})});
     const data=await res.json();
-    const out=document.getElementById(outputId);
-    const copy=document.getElementById(copyId);
+    const out=document.getElementById(outId);
     out.textContent=data.content||data.error;
     out.style.display='block';
-    copy.style.display='inline-block';
+    document.getElementById(copyId).style.display='inline-block';
     if(type==='discord'){
-      const pg=document.getElementById('discordPostGeneral');
-      const pu=document.getElementById('discordPostUpdates');
-      if(pg)pg.style.display='inline-block';
-      if(pu)pu.style.display='inline-block';
+      document.getElementById('discordPostGeneral').style.display='inline-block';
+      document.getElementById('discordPostUpdates').style.display='inline-block';
     }
-  }catch(e){
-    document.getElementById(outputId).textContent='Failed. Try again.';
-    document.getElementById(outputId).style.display='block';
-  }
+  }catch(e){document.getElementById(outId).textContent='Failed. Try again.';document.getElementById(outId).style.display='block';}
   btn.disabled=false;
   btn.textContent=type==='newsletter'?'Redraft':'Regenerate';
 }
-function copyText(outputId,copyId){
-  navigator.clipboard.writeText(document.getElementById(outputId).textContent);
-  const btn=document.getElementById(copyId);
+function ccCopy(outId,btnId){
+  navigator.clipboard.writeText(document.getElementById(outId).textContent);
+  const btn=document.getElementById(btnId);
   btn.textContent='Copied!';btn.classList.add('ok');
   setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('ok');},2000);
 }
-function exportCSV(){window.open('/api/admin/export?token='+token,'_blank');}
-setInterval(()=>{if(token)loadData();},60000);
-</script></body></html>`);
-});
+async function ccDiscord(channel,outId,btnId){
+  const btn=document.getElementById(btnId);
+  const content=document.getElementById(outId).textContent;
+  if(!content){alert('Generate content first');return;}
+  btn.disabled=true;btn.textContent='Posting...';
+  try{
+    const res=await fetch('/api/discord/post',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':ccToken},body:JSON.stringify({channelId:DISCORD_CHANNELS[channel],content})});
+    const data=await res.json();
+    if(data.ok){btn.textContent='Posted!';btn.style.background='#16a34a';}
+    else{btn.textContent='Failed';alert(data.error||'Post failed');}
+  }catch(e){btn.textContent='Error';}
+  btn.disabled=false;
+  setTimeout(()=>{btn.textContent=channel==='general'?'Post to #general':'Post to #aria-updates';btn.style.background='';},3000);
+}
+function ccExport(){window.open('/api/admin/export?token='+ccToken,'_blank');}
+setInterval(()=>{if(ccToken)ccLoad();},60000);
+</script>
+</body></html>`));
 
 /* ── Deploy Panel ── */
-app.get('/deploy-panel', (_req, res) => {
-  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA Deploy Panel</title><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:100vh}.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}.card{background:white;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.1)}.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}.brand-icon{width:36px;height:36px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#1a1612}.brand-name{font-size:20px;font-weight:300;letter-spacing:3px;text-transform:uppercase}.label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b5e56;margin-bottom:6px}.field{width:100%;padding:12px 14px;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:14px;outline:none;margin-bottom:14px;background:#f9f6f1;-webkit-appearance:none}.field:focus{border-color:#c4923a;background:white}.btn{width:100%;padding:13px;background:#1a1612;color:white;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px}.btn:active{background:#c4923a}.btn-sec{width:100%;padding:11px;background:transparent;color:#6b5e56;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer}.err{font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none}.dash{display:none;padding:20px;max-width:600px;margin:0 auto}.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:14px 0;border-bottom:1px solid #ebe2d5}.nav-left{display:flex;align-items:center;gap:8px}.nav-icon{width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1a1612}.nav-title{font-size:16px;font-weight:500}.nav-sub{font-size:12px;color:#9b8c84}.logout{font-size:12px;color:#9b8c84;background:none;border:1px solid #ebe2d5;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}.section{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:20px;margin-bottom:16px}.section-title{font-size:13px;font-weight:600;margin-bottom:4px}.section-sub{font-size:12px;color:#9b8c84;margin-bottom:16px}.file-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3ede4}.file-row:last-child{border:none}.file-name{font-size:13px;color:#3d3530;font-family:monospace}.file-status{font-size:11px;padding:3px 9px;border-radius:100px;background:#f0d9a8;color:#7a5a1a}.file-status.ok{background:#f0fdf4;color:#166534}.file-status.err{background:#fef2f2;color:#dc2626}.deploy-btn{width:100%;padding:14px;background:#1a1612;color:white;border:none;border-radius:10px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px}.deploy-btn:active{background:#c4923a}.deploy-btn:disabled{background:#9b8c84;cursor:not-allowed}.status-bar{padding:11px 14px;border-radius:8px;font-size:13px;display:none;margin-bottom:12px}.status-bar.ok{background:#f0fdf4;border:1px solid #86efac;color:#166534}.status-bar.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626}.status-bar.loading{background:#f0d9a8;border:1px solid #c4923a;color:#7a5a1a}.log-box{background:#1a1612;border-radius:10px;padding:14px;display:none;margin-top:12px}.log-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#9b8c84;margin-bottom:8px}.log-line{font-size:12px;color:#f0d9a8;font-family:monospace;line-height:1.9}.log-line.ok{color:#86efac}.log-line.err{color:#fca5a5}.hdot{width:8px;height:8px;border-radius:50%;background:#9b8c84;display:inline-block;margin-right:6px}.hdot.live{background:#16a34a}</style></head><body>
-<div class="login" id="loginView">
-  <div class="card">
-    <div class="brand"><div class="brand-icon">A</div><div class="brand-name">ARIA</div></div>
+app.get('/deploy-panel', (_req, res) => res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA Deploy Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Geist',sans-serif;background:#f9f6f1;color:#1a1612;min-height:100vh}
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.lcard{background:white;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.1)}
+.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px}
+.bicon{width:36px;height:36px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#1a1612}
+.bname{font-size:20px;font-weight:300;letter-spacing:3px;text-transform:uppercase}
+.lbl{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b5e56;margin-bottom:6px}
+.field{width:100%;padding:12px 14px;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:14px;outline:none;margin-bottom:14px;background:#f9f6f1;-webkit-appearance:none}
+.field:focus{border-color:#c4923a;background:white}
+.btn{width:100%;padding:13px;background:#1a1612;color:white;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px}
+.btn:active{background:#c4923a}
+.btn-sec{width:100%;padding:11px;background:transparent;color:#6b5e56;border:1.5px solid #ebe2d5;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer}
+.err{font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 12px;margin-bottom:12px;display:none}
+.dash{display:none;padding:20px;max-width:600px;margin:0 auto}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding:14px 0;border-bottom:1px solid #ebe2d5}
+.nleft{display:flex;align-items:center;gap:8px}
+.nicon{width:28px;height:28px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1a1612}
+.ntitle{font-size:16px;font-weight:500}
+.nsub{font-size:12px;color:#9b8c84}
+.logout{font-size:12px;color:#9b8c84;background:none;border:1px solid #ebe2d5;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.section{background:white;border:1px solid #ebe2d5;border-radius:12px;padding:20px;margin-bottom:16px}
+.stitle{font-size:13px;font-weight:600;margin-bottom:4px}
+.ssub{font-size:12px;color:#9b8c84;margin-bottom:16px}
+.frow{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3ede4}
+.frow:last-child{border:none}
+.fname{font-size:13px;color:#3d3530;font-family:monospace}
+.fstat{font-size:11px;padding:3px 9px;border-radius:100px;background:#f0d9a8;color:#7a5a1a}
+.fstat.ok{background:#f0fdf4;color:#166534}
+.fstat.err{background:#fef2f2;color:#dc2626}
+.dbtn{width:100%;padding:14px;background:#1a1612;color:white;border:none;border-radius:10px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px}
+.dbtn:active{background:#c4923a}.dbtn:disabled{background:#9b8c84;cursor:not-allowed}
+.sbar{padding:11px 14px;border-radius:8px;font-size:13px;display:none;margin-bottom:12px}
+.sbar.ok{background:#f0fdf4;border:1px solid #86efac;color:#166534}
+.sbar.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626}
+.sbar.loading{background:#f0d9a8;border:1px solid #c4923a;color:#7a5a1a}
+.log{background:#1a1612;border-radius:10px;padding:14px;display:none;margin-top:12px;max-height:220px;overflow-y:auto}
+.log-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#9b8c84;margin-bottom:8px}
+.logline{font-size:12px;color:#f0d9a8;font-family:monospace;line-height:1.9}
+.logline.ok{color:#86efac}.logline.err{color:#fca5a5}
+.hdot{width:8px;height:8px;border-radius:50%;background:#9b8c84;display:inline-block;margin-right:6px}
+.hdot.live{background:#16a34a}
+</style>
+</head>
+<body>
+<div class="login" id="dp-login">
+  <div class="lcard">
+    <div class="brand"><div class="bicon">A</div><div class="bname">ARIA</div></div>
     <div style="text-align:center;margin-bottom:22px">
       <div style="font-size:15px;font-weight:500;margin-bottom:4px">Deploy Panel</div>
       <div style="font-size:12px;color:#9b8c84">Enter your deploy password</div>
     </div>
-    <div class="err" id="loginErr">Incorrect password.</div>
-    <div class="label">Password</div>
-    <input class="field" type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
-    <button class="btn" onclick="doLogin()">Access Deploy Panel</button>
+    <div class="err" id="dp-err">Incorrect password.</div>
+    <div class="lbl">Password</div>
+    <input class="field" type="password" id="dp-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')dpLogin()">
+    <button class="btn" onclick="dpLogin()">Access Deploy Panel</button>
   </div>
 </div>
-<div class="dash" id="dashView">
+<div class="dash" id="dp-dash">
   <div class="nav">
-    <div class="nav-left">
-      <div class="nav-icon">A</div>
-      <div><div class="nav-title">Deploy Panel</div><div class="nav-sub"><span class="hdot" id="hdot"></span><span id="htext">Checking...</span></div></div>
+    <div class="nleft">
+      <div class="nicon">A</div>
+      <div><div class="ntitle">Deploy Panel</div><div class="nsub"><span class="hdot" id="dp-hdot"></span><span id="dp-htext">Checking...</span></div></div>
     </div>
-    <button class="logout" onclick="doLogout()">Sign Out</button>
+    <button class="logout" onclick="dpLogout()">Sign Out</button>
   </div>
   <div class="section">
-    <div class="section-title">Files Queued for Deploy</div>
-    <div class="section-sub">All 3 files pushed to GitHub. Render redeploys automatically.</div>
-    <div id="fileRows">
-      <div class="file-row"><span class="file-name">public/index.html</span><span class="file-status" id="status-index">Ready</span></div>
-      <div class="file-row"><span class="file-name">public/sw.js</span><span class="file-status" id="status-sw">Ready</span></div>
-      <div class="file-row"><span class="file-name">server.js</span><span class="file-status" id="status-server">Ready</span></div>
-    </div>
+    <div class="stitle">Files Queued for Deploy</div>
+    <div class="ssub">All 3 files pushed to GitHub. Render redeploys automatically.</div>
+    <div class="frow"><span class="fname">public/index.html</span><span class="fstat" id="dp-st-index">Ready</span></div>
+    <div class="frow"><span class="fname">public/sw.js</span><span class="fstat" id="dp-st-sw">Ready</span></div>
+    <div class="frow"><span class="fname">server.js</span><span class="fstat" id="dp-st-server">Ready</span></div>
   </div>
-  <div class="status-bar" id="statusBar"></div>
-  <button class="deploy-btn" id="deployBtn" onclick="deployAll()">Deploy All Files</button>
-  <button class="btn-sec" onclick="checkHealth()">Check Server Health</button>
-  <div class="log-box" id="logBox" style="max-height:200px;overflow-y:auto"><div class="log-label">Deploy Log</div><div id="logLines"></div></div>
+  <div class="sbar" id="dp-sbar"></div>
+  <button class="dbtn" id="dp-btn" onclick="dpDeployAll()">🚀 Deploy All Files</button>
+  <button class="btn-sec" onclick="dpHealth()">Check Server Health</button>
+  <div class="log" id="dp-log"><div class="log-lbl">Deploy Log</div><div id="dp-lines"></div></div>
 </div>
 <script>
-let secret='';
-function doLogin(){const pw=document.getElementById('pw').value;if(!pw)return;secret=pw;checkHealth();document.getElementById('loginErr').style.display='none';document.getElementById('loginView').style.display='none';document.getElementById('dashView').style.display='block';}
-function doLogout(){secret='';document.getElementById('loginView').style.display='flex';document.getElementById('dashView').style.display='none';document.getElementById('pw').value='';}
-async function checkHealth(){
+let dpSecret='';
+function dpLogin(){
+  const pw=document.getElementById('dp-pw').value;
+  if(!pw)return;
+  dpSecret=pw;
+  document.getElementById('dp-err').style.display='none';
+  document.getElementById('dp-login').style.display='none';
+  document.getElementById('dp-dash').style.display='block';
+  dpHealth();
+}
+function dpLogout(){
+  dpSecret='';
+  document.getElementById('dp-login').style.display='flex';
+  document.getElementById('dp-dash').style.display='none';
+  document.getElementById('dp-pw').value='';
+}
+async function dpHealth(){
   try{
     const r=await fetch('/health');
     const d=await r.json();
     if(d.status==='ok'){
-      document.getElementById('hdot').className='hdot live';
-      document.getElementById('htext').textContent='Server live';
-      showStatus('✅ Server is healthy and live!','ok');
+      document.getElementById('dp-hdot').className='hdot live';
+      document.getElementById('dp-htext').textContent='Server live';
+      dpStatus('✅ Server is healthy!','ok');
     }
   }catch(e){
-    document.getElementById('htext').textContent='Server sleeping';
-    showStatus('⚠️ Server may be sleeping. Try again in 30s.','err');
+    document.getElementById('dp-htext').textContent='Server sleeping';
+    dpStatus('⚠️ Server sleeping. Open the app first to wake it.','err');
   }
 }
-function showStatus(msg,type){const s=document.getElementById('statusBar');s.textContent=msg;s.className='status-bar '+type;s.style.display='block';}
-function addLog(msg,type=''){
-  const box=document.getElementById('logBox');
-  box.style.display='block';
+function dpStatus(msg,type){const s=document.getElementById('dp-sbar');s.textContent=msg;s.className='sbar '+type;s.style.display='block';}
+function dpLog(msg,type=''){
+  const log=document.getElementById('dp-log');
+  log.style.display='block';
   const line=document.createElement('div');
-  line.className='log-line '+type;
+  line.className='logline '+type;
   line.textContent=new Date().toLocaleTimeString()+'  '+msg;
-  document.getElementById('logLines').appendChild(line);
-  box.scrollTop=box.scrollHeight;
+  document.getElementById('dp-lines').appendChild(line);
+  log.scrollTop=log.scrollHeight;
 }
-function setFileStatus(id,text,type){const el=document.getElementById('status-'+id);if(el){el.textContent=text;el.className='file-status '+type;}}
-async function deployAll(){
-  const btn=document.getElementById('deployBtn');
+function dpSetStat(id,text,type){const el=document.getElementById('dp-st-'+id);if(el){el.textContent=text;el.className='fstat '+type;}}
+async function dpDeployAll(){
+  const btn=document.getElementById('dp-btn');
   btn.disabled=true;btn.textContent='Deploying...';
-  document.getElementById('logLines').innerHTML='';
-  document.getElementById('logBox').style.display='none';
-  showStatus('Starting deploy...','loading');
-  addLog('Deploy started');
+  document.getElementById('dp-lines').innerHTML='';
+  document.getElementById('dp-log').style.display='none';
+  dpStatus('Starting deploy...','loading');
+  dpLog('Deploy started');
   const files=[{id:'index',filename:'public/index.html'},{id:'sw',filename:'public/sw.js'},{id:'server',filename:'server.js'}];
   let allOk=true;
   for(const f of files){
-    setFileStatus(f.id,'Deploying...','');
-    addLog('Pushing '+f.filename+'...');
+    dpSetStat(f.id,'Deploying...','');
+    dpLog('Pushing '+f.filename+'...');
     try{
-      const res=await fetch('/api/deploy-latest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,filename:f.filename})});
-      let data={};
-      try{ data=await res.json(); }catch(e){ data={ok:res.ok}; }
-      if(data.ok || res.ok){
-        setFileStatus(f.id,'Deployed','ok');
-        addLog(f.filename+' pushed','ok');
+      const res=await fetch('/api/deploy-latest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:dpSecret,filename:f.filename})});
+      const data=await res.json().catch(()=>({ok:res.ok}));
+      if(data.ok){
+        dpSetStat(f.id,'✓ Deployed','ok');
+        dpLog(f.filename+' pushed successfully','ok');
       }else{
-        setFileStatus(f.id,'Failed','err');
-        addLog(f.filename+': '+(data.error||'failed - status '+res.status),'err');
+        dpSetStat(f.id,'✗ Failed','err');
+        dpLog(f.filename+' failed: '+(data.error||'status '+res.status),'err');
         allOk=false;
       }
     }catch(e){
-      setFileStatus(f.id,'Error','err');
-      addLog('Error: '+e.message,'err');
+      dpSetStat(f.id,'✗ Error','err');
+      dpLog('Error: '+e.message,'err');
       allOk=false;
     }
     await new Promise(r=>setTimeout(r,2000));
   }
   if(allOk){
-    showStatus('✅ All files deployed! Live in ~60 seconds.','ok');
-    addLog('Deploy complete.','ok');
+    dpStatus('✅ All files deployed! Live in ~60 seconds.','ok');
+    dpLog('Deploy complete.','ok');
     btn.textContent='✅ Done!';
-    setTimeout(()=>{btn.disabled=false;btn.textContent='Deploy All Files';},5000);
+    setTimeout(()=>{btn.disabled=false;btn.textContent='🚀 Deploy All Files';},5000);
   }else{
-    showStatus('⚠️ Some files failed. Check log above.','err');
-    btn.disabled=false;
-    btn.textContent='Deploy All Files';
+    dpStatus('⚠️ Some files failed — check log below.','err');
+    btn.disabled=false;btn.textContent='🚀 Deploy All Files';
   }
 }
-checkHealth();
-</script></body></html>`);
-});
+dpHealth();
+</script>
+</body></html>`));
 
 /* ── Claude proxy ── */
-
-// Pro emails — admin always gets Pro free
-const PRO_EMAILS = new Set([
-  'joeburchette2010@gmail.com'
-]);
-
-// Add a paid user to Pro (called when Stripe payment confirmed later)
-function grantPro(email) { PRO_EMAILS.add(email.toLowerCase()); }
-
-function getModel(userEmail, isPro) {
-  const email = (userEmail || '').toLowerCase();
-  // Admin email always gets Sonnet
-  if (PRO_EMAILS.has(email)) return 'claude-sonnet-4-20250514';
-  // Paid Pro users get Sonnet
-  if (isPro) return 'claude-sonnet-4-20250514';
-  // Free users get Haiku — same quality, 70% cheaper
-  return 'claude-haiku-4-5-20251001';
-}
-
 app.post('/api/chat', async (req, res) => {
   const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
   if (rateLimit(ip)) return res.status(429).json({ error: 'Too many requests.' });
@@ -624,11 +603,8 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'messages array is required.' });
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Add ANTHROPIC_API_KEY in Render environment variables.' });
-
   const model = getModel(userEmail, isPro);
-  const tier  = model.includes('sonnet') ? 'Pro' : 'Free';
-  console.log(`CHAT [${tier}] ${userEmail || 'anonymous'} — model: ${model}`);
-
+  console.log(`CHAT [${model.includes('sonnet')?'Pro':'Free'}] ${userEmail||'anon'}`);
   try {
     const upstream = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -637,8 +613,8 @@ app.post('/api/chat', async (req, res) => {
     });
     const data = await upstream.json();
     if (data.error) return res.status(400).json({ error: data.error.message });
-    res.json({ ...data, tier });
-  } catch (err) {
+    res.json({ ...data, tier: model.includes('sonnet') ? 'Pro' : 'Free' });
+  } catch(err) {
     console.error('[proxy] failed to reach Anthropic');
     res.status(502).json({ error: 'Could not reach AI. Please try again.' });
   }
