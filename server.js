@@ -214,29 +214,34 @@ app.post('/api/deploy-latest', async (req, res) => {
   const email = process.env.GITHUB_EMAIL;
   if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
   try {
-    // Always fetch current content from GitHub — never from stale server disk
     const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
     });
     const fileData = await getRes.json();
     if (!fileData.sha) return res.status(404).json({ error: 'File not found in GitHub: ' + filename });
     const sha = fileData.sha;
-    // Decode current content from GitHub
-    const currentContent = Buffer.from(fileData.content, 'base64').toString('utf8');
-    // Re-push same content with new commit to trigger Render redeploy
+    // Decode content — strip newlines added by GitHub base64 encoding
+    const currentContent = Buffer.from(fileData.content.replace(/\n/g,''), 'base64').toString('utf8');
+    // Add timestamp to commit message to force unique commit
+    const ts = new Date().toISOString().replace('T',' ').substring(0,19);
     const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
       method: 'PUT',
       headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: `Auto-deploy: update ${filename}`,
+        message: `Auto-deploy: ${filename} [${ts}]`,
         content: Buffer.from(currentContent).toString('base64'),
         sha,
         committer: { name: 'ARIA Deploy Bot', email: email || 'deploy@aria.app' }
       })
     });
     const result = await pushRes.json();
-    if (result.content) { console.log(`DEPLOYED: ${filename}`); res.json({ ok: true, message: `${filename} deployed` }); }
-    else res.status(500).json({ error: result.message || 'Deploy failed' });
+    // 422 = nothing changed, treat as success
+    if (result.content || pushRes.status === 422) {
+      console.log(`DEPLOYED: ${filename}`);
+      res.json({ ok: true, message: `${filename} deployed` });
+    } else {
+      res.status(500).json({ error: result.message || 'Deploy failed' });
+    }
   } catch (err) {
     res.status(502).json({ error: 'Deploy failed: ' + err.message });
   }
