@@ -49,8 +49,9 @@ function rateLimit(ip) {
 
 /* ── Admin auth ── */
 function adminAuth(req, res, next) {
-  const token = req.headers['x-admin-token'] || req.query.token;
-  if (token !== (process.env.ADMIN_PASSWORD || 'aria-admin-2025')) return res.status(401).json({ error: 'Unauthorized' });
+  const token = (req.headers['x-admin-token'] || req.query.token || '').trim();
+  const adminPassword = (process.env.ADMIN_PASSWORD || 'aria-admin-2025').trim();
+  if (token !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
