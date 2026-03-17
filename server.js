@@ -147,7 +147,31 @@ app.post('/api/command/ai', adminAuth, async (req, res) => {
   }
 });
 
-/* ── Auto-deploy endpoint ── */
+/* ── Discord Bot: post message to channel ── */
+app.post('/api/discord/post', adminAuth, async (req, res) => {
+  const { channelId, content } = req.body;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return res.status(500).json({ error: 'DISCORD_BOT_TOKEN not set' });
+  if (!channelId || !content) return res.status(400).json({ error: 'Missing channelId or content' });
+  try {
+    const r = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bot ${botToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: content.substring(0, 2000) })
+    });
+    const data = await r.json();
+    if (data.id) {
+      console.log(`DISCORD POST: channel ${channelId}`);
+      res.json({ ok: true, messageId: data.id });
+    } else {
+      res.status(500).json({ error: data.message || 'Discord post failed' });
+    }
+  } catch (err) {
+    res.status(502).json({ error: 'Discord post failed: ' + err.message });
+  }
+});
+
+
 app.post('/api/deploy', async (req, res) => {
   const { secret, filename, content } = req.body;
   const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
@@ -322,6 +346,8 @@ app.get('/command', (_req, res) => {
         <button class="ai-btn" id="discordBtn" onclick="getAI('discord','discordBtn','discordOutput','discordCopy')">Generate</button>
         <div class="ai-output" id="discordOutput"></div>
         <button class="copy-btn" id="discordCopy" onclick="copyText('discordOutput','discordCopy')">Copy</button>
+        <button class="copy-btn" id="discordPostGeneral" style="display:none;background:#5865F2;color:white;border-color:#5865F2" onclick="postToDiscord('general',document.getElementById('discordOutput').textContent,'discordPostGeneral')">📤 Post to #general</button>
+        <button class="copy-btn" id="discordPostUpdates" style="display:none;background:#5865F2;color:white;border-color:#5865F2;margin-left:6px" onclick="postToDiscord('aria-updates',document.getElementById('discordOutput').textContent,'discordPostUpdates')">📤 Post to #aria-updates</button>
       </div>
     </div>
     <div class="panel">
@@ -386,7 +412,38 @@ async function loadData(){
     document.getElementById('refreshTime').textContent='Last updated: '+new Date().toLocaleTimeString();
   }catch(e){console.error(e);}
 }
-async function getAI(type,btnId,outputId,copyId){
+const DISCORD_CHANNELS = {
+  'aria-updates': '1483261092062040184',
+  'general': '1483261401664458972',
+  'getting-started': '1483262143426990282'
+};
+
+async function postToDiscord(channelName, content, btnId) {
+  const btn = document.getElementById(btnId);
+  if (!DISCORD_CHANNELS[channelName]) { alert('Channel not found'); return; }
+  btn.disabled = true;
+  btn.textContent = 'Posting...';
+  try {
+    const res = await fetch('/api/discord/post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({ channelId: DISCORD_CHANNELS[channelName], content })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = '✓ Posted!';
+      btn.style.background = '#16a34a';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '📤 Post to #' + channelName; btn.style.background = ''; }, 3000);
+    } else {
+      btn.textContent = '✗ Failed';
+      btn.disabled = false;
+      alert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e) {
+    btn.textContent = '✗ Error';
+    btn.disabled = false;
+  }
+}
   const btn=document.getElementById(btnId);
   btn.disabled=true;btn.textContent='Generating...';
   try{
@@ -397,6 +454,12 @@ async function getAI(type,btnId,outputId,copyId){
     out.textContent=data.content||data.error;
     out.style.display='block';
     copy.style.display='inline-block';
+    if(type==='discord'){
+      const pg=document.getElementById('discordPostGeneral');
+      const pu=document.getElementById('discordPostUpdates');
+      if(pg)pg.style.display='inline-block';
+      if(pu)pu.style.display='inline-block';
+    }
   }catch(e){
     document.getElementById(outputId).textContent='Failed. Try again.';
     document.getElementById(outputId).style.display='block';
