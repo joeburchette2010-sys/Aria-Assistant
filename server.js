@@ -206,8 +206,40 @@ app.post('/api/deploy-latest', async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-/* ── Admin dashboard (redirects to command) ── */
-app.get('/admin', (_req, res) => res.redirect('/command'));
+/* ── Landing page ── */
+app.get('/home', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'home.html'));
+});
+
+/* ── Visitor analytics ── */
+const visitors = [];
+app.post('/api/track', (req, res) => {
+  const { page, ref, ts } = req.body;
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || 'unknown';
+  visitors.push({ page, ref, ts, ip: ip.substring(0,15) });
+  if (visitors.length > 500) visitors.shift();
+  res.json({ ok: true });
+});
+
+app.get('/api/command/visitors', adminAuth, (req, res) => {
+  const now = new Date();
+  const oneDayAgo  = new Date(now - 24*60*60*1000);
+  const oneWeekAgo = new Date(now - 7*24*60*60*1000);
+  const landing = visitors.filter(v => v.page === 'landing');
+  res.json({
+    total:   landing.length,
+    today:   landing.filter(v => new Date(v.ts) > oneDayAgo).length,
+    week:    landing.filter(v => new Date(v.ts) > oneWeekAgo).length,
+    recent:  landing.slice(-5).reverse(),
+    sources: landing.reduce((acc, v) => {
+      const src = v.ref ? new URL(v.ref).hostname : 'direct';
+      acc[src] = (acc[src]||0) + 1;
+      return acc;
+    }, {})
+  });
+});
+
 
 /* ── Command Center ── */
 app.get('/command', (_req, res) => res.send(`<!DOCTYPE html>
@@ -304,6 +336,7 @@ tr:last-child td{border:none}
   <div class="tabs">
     <button class="tab-btn active" onclick="ccTab('overview')">Overview</button>
     <button class="tab-btn" onclick="ccTab('members')">Members</button>
+    <button class="tab-btn" onclick="ccTab('visitors')">Visitors</button>
     <button class="tab-btn" onclick="ccTab('ai')">AI Tools</button>
     <button class="tab-btn" onclick="ccTab('errors')">Errors</button>
   </div>
@@ -319,7 +352,23 @@ tr:last-child td{border:none}
       <div class="panel"><div class="ptitle">Recent Signups</div><div class="psub">Latest 5 members</div><div id="cc-recent"></div></div>
     </div>
   </div>
-  <div class="tab-content" id="cc-members">
+  <div class="tab-content" id="cc-visitors">
+    <div class="sgrid">
+      <div class="stat"><div class="sval" id="cc-vtotal">0</div><div class="slbl">Total Visits</div></div>
+      <div class="stat"><div class="sval" id="cc-vtoday">0</div><div class="slbl">Today</div></div>
+      <div class="stat"><div class="sval" id="cc-vweek">0</div><div class="slbl">This Week</div></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="ptitle">Traffic Sources</div>
+      <div class="psub">Where visitors are coming from</div>
+      <div id="cc-sources"></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Recent Visits</div>
+      <div class="psub">Last 5 landing page visitors</div>
+      <div id="cc-vrecent"></div>
+    </div>
+  </div>
     <div class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div><div class="ptitle">All Members</div><div class="psub">Complete list</div></div>
@@ -363,9 +412,10 @@ function ccLogout(){
   document.getElementById('cc-pw').value='';
 }
 function ccTab(name){
-  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',['overview','members','ai','errors'][i]===name));
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',['overview','members','visitors','ai','errors'][i]===name));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.getElementById('cc-'+name).classList.add('active');
+  if(name==='visitors') ccLoadVisitors();
 }
 async function ccLoad(){
   try{
@@ -426,7 +476,35 @@ async function ccDiscord(channel,outId,btnId){
   setTimeout(()=>{btn.textContent=channel==='general'?'Post to #general':'Post to #aria-updates';btn.style.background='';},3000);
 }
 function ccExport(){window.open('/api/admin/export?token='+ccToken,'_blank');}
+async function ccLoadVisitors(){
+  try{
+    const res=await fetch('/api/command/visitors',{headers:{'x-admin-token':ccToken}});
+    const d=await res.json();
+    document.getElementById('cc-vtotal').textContent=d.total;
+    document.getElementById('cc-vtoday').textContent=d.today;
+    document.getElementById('cc-vweek').textContent=d.week;
+    const sources=document.getElementById('cc-sources');
+    const entries=Object.entries(d.sources||{}).sort((a,b)=>b[1]-a[1]);
+    sources.innerHTML=entries.length===0?'<div class="empty">No data yet — share your landing page!</div>':entries.map(([src,cnt])=>'<div class="sitem"><div class="sname">'+src+'</div><div class="stime">'+cnt+' visits</div></div>').join('');
+    const vr=document.getElementById('cc-vrecent');
+    vr.innerHTML=d.recent.length===0?'<div class="empty">No visits yet</div>':d.recent.map(v=>'<div class="sitem"><div><div class="sname">'+(v.ref?v.ref.substring(0,40):'Direct visit')+'</div><div class="semail">'+new Date(v.ts).toLocaleTimeString()+'</div></div></div>').join('');
+  }catch(e){console.error(e);}
+}
 setInterval(()=>{if(ccToken)ccLoad();},60000);
+  try{
+    const res=await fetch('/api/command/visitors',{headers:{'x-admin-token':ccToken}});
+    const d=await res.json();
+    document.getElementById('cc-vtotal').textContent=d.total;
+    document.getElementById('cc-vtoday').textContent=d.today;
+    document.getElementById('cc-vweek').textContent=d.week;
+    const sources=document.getElementById('cc-sources');
+    const entries=Object.entries(d.sources||{}).sort((a,b)=>b[1]-a[1]);
+    sources.innerHTML=entries.length===0?'<div class="empty">No data yet — share your landing page!</div>':entries.map(([src,cnt])=>'<div class="sitem"><div class="sname">'+src+'</div><div class="stime">'+cnt+' visits</div></div>').join('');
+    const vr=document.getElementById('cc-vrecent');
+    vr.innerHTML=d.recent.length===0?'<div class="empty">No visits yet</div>':d.recent.map(v=>'<div class="sitem"><div><div class="sname">'+(v.ref?v.ref.substring(0,40):'Direct visit')+'</div><div class="semail">'+new Date(v.ts).toLocaleTimeString()+'</div></div></div>').join('');
+  }catch(e){console.error(e);}
+}
+
 </script>
 </body></html>`));
 
