@@ -379,7 +379,7 @@ function doSignup(){
 function login(u){
   user=u;count=u.c||0;
   user.pro = isProUser(u.email);
-  sessionStorage.setItem(SK,JSON.stringify(u));
+  localStorage.setItem(SK,JSON.stringify(u));
   document.getElementById('authScreen').style.display='none';
   document.getElementById('app').classList.add('on');
   const ini=(u.name||'U').split(' ').map(x=>x[0]).join('').toUpperCase().slice(0,2);
@@ -391,12 +391,12 @@ function login(u){
   updateUsage();renderChips();
 }
 function doLogout(){
-  sessionStorage.removeItem(SK);user=null;hist=[];count=0;
+  localStorage.removeItem(SK);user=null;hist=[];count=0;
   document.getElementById('app').classList.remove('on');
   document.getElementById('authScreen').style.display='flex';
   clearMsgs();
 }
-(function init(){const s=sessionStorage.getItem(SK);if(s){try{login(JSON.parse(s))}catch{sessionStorage.removeItem(SK)}}})();
+(function init(){const s=localStorage.getItem(SK);if(s){try{login(JSON.parse(s))}catch{localStorage.removeItem(SK)}}})();
 function setMode(m){
   mode=m;hist=[];clearMsgs();
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
