@@ -154,20 +154,28 @@ app.post('/api/command/ai', adminAuth, async (req, res) => {
   } catch(err) { res.status(502).json({ error: 'AI request failed' }); }
 });
 
-/* ── Discord Bot post ── */
+/* ── Discord Webhook post ── */
 app.post('/api/discord/post', adminAuth, async (req, res) => {
   const { channelId, content } = req.body;
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!botToken) return res.status(500).json({ error: 'DISCORD_BOT_TOKEN not set' });
+  const webhooks = {
+    '1483261401664458972': 'https://discord.com/api/webhooks/1483317584584769658/PY1MTsRh2Q0pr_PYZ3I8rulS8CbPM-7tvgkq3kDlyQS0dn7m7DgfWa43ihGnDk3u9qfm',
+    '1483261092062040184': 'https://discord.com/api/webhooks/1483318309716754472/pAB5yGi_P_28uyBmGp36u18bRDHUi2uTQkBRKVyAWkX-TZoB4y6JyGGJ-atT6oAccavY'
+  };
+  const webhookUrl = webhooks[channelId];
+  if (!webhookUrl) return res.status(400).json({ error: 'No webhook for channel: ' + channelId });
   try {
-    const r = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+    const r = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Authorization': `Bot ${botToken}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: content.substring(0, 2000) })
     });
-    const data = await r.json();
-    if (data.id) { console.log(`DISCORD POST: channel ${channelId}`); res.json({ ok: true }); }
-    else res.status(500).json({ error: data.message || 'Discord post failed' });
+    if (r.ok || r.status === 204) {
+      console.log(`DISCORD WEBHOOK POST: channel ${channelId}`);
+      res.json({ ok: true });
+    } else {
+      const data = await r.text();
+      res.status(500).json({ error: 'Discord webhook failed: ' + data });
+    }
   } catch(err) { res.status(502).json({ error: 'Discord failed: ' + err.message }); }
 });
 
