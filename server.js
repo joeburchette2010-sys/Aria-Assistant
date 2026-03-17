@@ -519,17 +519,79 @@ app.get('/deploy-panel', (_req, res) => {
   <div class="status-bar" id="statusBar"></div>
   <button class="deploy-btn" id="deployBtn" onclick="deployAll()">Deploy All Files</button>
   <button class="btn-sec" onclick="checkHealth()">Check Server Health</button>
-  <div class="log-box" id="logBox"><div class="log-label">Deploy Log</div><div id="logLines"></div></div>
+  <div class="log-box" id="logBox" style="max-height:200px;overflow-y:auto"><div class="log-label">Deploy Log</div><div id="logLines"></div></div>
 </div>
 <script>
 let secret='';
 function doLogin(){const pw=document.getElementById('pw').value;if(!pw)return;secret=pw;checkHealth();document.getElementById('loginErr').style.display='none';document.getElementById('loginView').style.display='none';document.getElementById('dashView').style.display='block';}
 function doLogout(){secret='';document.getElementById('loginView').style.display='flex';document.getElementById('dashView').style.display='none';document.getElementById('pw').value='';}
-async function checkHealth(){try{const r=await fetch('/health');const d=await r.json();if(d.status==='ok'){document.getElementById('hdot').className='hdot live';document.getElementById('htext').textContent='Server live';}}catch(e){document.getElementById('htext').textContent='Server sleeping';}}
+async function checkHealth(){
+  try{
+    const r=await fetch('/health');
+    const d=await r.json();
+    if(d.status==='ok'){
+      document.getElementById('hdot').className='hdot live';
+      document.getElementById('htext').textContent='Server live';
+      showStatus('✅ Server is healthy and live!','ok');
+    }
+  }catch(e){
+    document.getElementById('htext').textContent='Server sleeping';
+    showStatus('⚠️ Server may be sleeping. Try again in 30s.','err');
+  }
+}
 function showStatus(msg,type){const s=document.getElementById('statusBar');s.textContent=msg;s.className='status-bar '+type;s.style.display='block';}
-function addLog(msg,type=''){document.getElementById('logBox').style.display='block';const line=document.createElement('div');line.className='log-line '+type;line.textContent=new Date().toLocaleTimeString()+'  '+msg;document.getElementById('logLines').appendChild(line);}
+function addLog(msg,type=''){
+  const box=document.getElementById('logBox');
+  box.style.display='block';
+  const line=document.createElement('div');
+  line.className='log-line '+type;
+  line.textContent=new Date().toLocaleTimeString()+'  '+msg;
+  document.getElementById('logLines').appendChild(line);
+  box.scrollTop=box.scrollHeight;
+}
 function setFileStatus(id,text,type){const el=document.getElementById('status-'+id);if(el){el.textContent=text;el.className='file-status '+type;}}
-async function deployAll(){const btn=document.getElementById('deployBtn');btn.disabled=true;btn.textContent='Deploying...';document.getElementById('logLines').innerHTML='';document.getElementById('logBox').style.display='none';showStatus('Starting deploy...','loading');addLog('Deploy started');const files=[{id:'index',filename:'public/index.html'},{id:'sw',filename:'public/sw.js'},{id:'server',filename:'server.js'}];let allOk=true;for(const f of files){setFileStatus(f.id,'Deploying...','');addLog('Pushing '+f.filename+'...');try{const res=await fetch('/api/deploy-latest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,filename:f.filename})});const data=await res.json();if(data.ok){setFileStatus(f.id,'Deployed','ok');addLog(f.filename+' pushed','ok');}else{setFileStatus(f.id,'Failed','err');addLog(f.filename+': '+(data.error||'failed'),'err');allOk=false;}}catch(e){setFileStatus(f.id,'Error','err');addLog('Error: '+e.message,'err');allOk=false;}await new Promise(r=>setTimeout(r,1500));}if(allOk){showStatus('All files deployed! Live in ~60 seconds.','ok');addLog('Deploy complete.','ok');btn.textContent='Done!';setTimeout(()=>{btn.disabled=false;btn.textContent='Deploy All Files';},5000);}else{showStatus('Some files failed. Check log.','err');btn.disabled=false;btn.textContent='Deploy All Files';}}
+async function deployAll(){
+  const btn=document.getElementById('deployBtn');
+  btn.disabled=true;btn.textContent='Deploying...';
+  document.getElementById('logLines').innerHTML='';
+  document.getElementById('logBox').style.display='none';
+  showStatus('Starting deploy...','loading');
+  addLog('Deploy started');
+  const files=[{id:'index',filename:'public/index.html'},{id:'sw',filename:'public/sw.js'},{id:'server',filename:'server.js'}];
+  let allOk=true;
+  for(const f of files){
+    setFileStatus(f.id,'Deploying...','');
+    addLog('Pushing '+f.filename+'...');
+    try{
+      const res=await fetch('/api/deploy-latest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,filename:f.filename})});
+      let data={};
+      try{ data=await res.json(); }catch(e){ data={ok:res.ok}; }
+      if(data.ok || res.ok){
+        setFileStatus(f.id,'Deployed','ok');
+        addLog(f.filename+' pushed','ok');
+      }else{
+        setFileStatus(f.id,'Failed','err');
+        addLog(f.filename+': '+(data.error||'failed - status '+res.status),'err');
+        allOk=false;
+      }
+    }catch(e){
+      setFileStatus(f.id,'Error','err');
+      addLog('Error: '+e.message,'err');
+      allOk=false;
+    }
+    await new Promise(r=>setTimeout(r,2000));
+  }
+  if(allOk){
+    showStatus('✅ All files deployed! Live in ~60 seconds.','ok');
+    addLog('Deploy complete.','ok');
+    btn.textContent='✅ Done!';
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Deploy All Files';},5000);
+  }else{
+    showStatus('⚠️ Some files failed. Check log above.','err');
+    btn.disabled=false;
+    btn.textContent='Deploy All Files';
+  }
+}
 checkHealth();
 </script></body></html>`);
 });
