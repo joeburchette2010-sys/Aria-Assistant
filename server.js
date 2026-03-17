@@ -243,7 +243,11 @@ app.get('/api/command/visitors', adminAuth, (req, res) => {
 
 
 /* ── Command Center ── */
-app.get('/command', (_req, res) => res.send(`<!DOCTYPE html>
+app.get('/command', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -402,9 +406,22 @@ function ccLogin(){
   if(!pw)return;
   ccToken=pw;
   document.getElementById('cc-err').style.display='none';
-  document.getElementById('cc-login').style.display='none';
-  document.getElementById('cc-dash').style.display='block';
-  ccLoad();
+  fetch('/api/command/stats?token='+encodeURIComponent(pw))
+    .then(r=>{
+      if(r.status===401){
+        document.getElementById('cc-err').style.display='block';
+        ccToken='';
+        return;
+      }
+      document.getElementById('cc-login').style.display='none';
+      document.getElementById('cc-dash').style.display='block';
+      ccLoad();
+    })
+    .catch(()=>{
+      document.getElementById('cc-err').textContent='Connection error. Try again.';
+      document.getElementById('cc-err').style.display='block';
+      ccToken='';
+    });
 }
 function ccLogout(){
   ccToken='';
@@ -420,29 +437,32 @@ function ccTab(name){
 }
 async function ccLoad(){
   try{
-    const res=await fetch('/api/command/stats',{headers:{'x-admin-token':ccToken}});
+    const res=await fetch('/api/command/stats?token='+encodeURIComponent(ccToken));
     if(res.status===401){document.getElementById('cc-err').style.display='block';ccLogout();return;}
     const d=await res.json();
-    document.getElementById('cc-total').textContent=d.total;
-    document.getElementById('cc-today').textContent=d.today;
-    document.getElementById('cc-week').textContent=d.week;
-    document.getElementById('cc-uptime').textContent=Math.floor(d.uptime/3600)+'h';
-    const max=Math.max(...d.dailyCounts.map(x=>x.count),1);
-    document.getElementById('cc-chart').innerHTML=d.dailyCounts.map(day=>'<div class="bwrap"><div class="bar" style="height:'+Math.max((day.count/max)*70,2)+'px"></div><div class="blbl">'+day.label.split(' ')[1]+'</div></div>').join('');
-    const rec=document.getElementById('cc-recent');
-    rec.innerHTML=d.recentSignups.length===0?'<div class="empty">No signups yet</div>':d.recentSignups.map(s=>'<div class="sitem"><div><div class="sname">'+s.name+'</div><div class="semail">'+s.email+'</div></div><div class="stime">'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</div></div>').join('');
-    const tbody=document.getElementById('cc-table');
-    tbody.innerHTML=d.allSignups.length===0?'<tr><td colspan="4" style="text-align:center;padding:30px;color:#9b8c84">No members yet</td></tr>':d.allSignups.map((s,i)=>'<tr><td><span class="badge">'+(d.total-i)+'</span></td><td>'+s.name+'</td><td style="color:#c4923a">'+s.email+'</td><td>'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+'</td></tr>').join('');
-    const ef=document.getElementById('cc-errors-feed');
-    ef.innerHTML=d.errors.length===0?'<div class="empty" style="color:#16a34a">No errors detected</div>':d.errors.map(e=>'<div class="eitem"><span class="etime">'+new Date(e.ts).toLocaleTimeString()+'</span>'+e.msg.substring(0,120)+'</div>').join('');
-    document.getElementById('cc-refresh').textContent='Last updated: '+new Date().toLocaleTimeString();
+    ccRender(d);
   }catch(e){console.error(e);}
+}
+function ccRender(d){
+  document.getElementById('cc-total').textContent=d.total;
+  document.getElementById('cc-today').textContent=d.today;
+  document.getElementById('cc-week').textContent=d.week;
+  document.getElementById('cc-uptime').textContent=Math.floor(d.uptime/3600)+'h';
+  const max=Math.max(...d.dailyCounts.map(x=>x.count),1);
+  document.getElementById('cc-chart').innerHTML=d.dailyCounts.map(day=>'<div class="bwrap"><div class="bar" style="height:'+Math.max((day.count/max)*70,2)+'px"></div><div class="blbl">'+day.label.split(' ')[1]+'</div></div>').join('');
+  const rec=document.getElementById('cc-recent');
+  rec.innerHTML=d.recentSignups.length===0?'<div class="empty">No signups yet</div>':d.recentSignups.map(s=>'<div class="sitem"><div><div class="sname">'+s.name+'</div><div class="semail">'+s.email+'</div></div><div class="stime">'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</div></div>').join('');
+  const tbody=document.getElementById('cc-table');
+  tbody.innerHTML=d.allSignups.length===0?'<tr><td colspan="4" style="text-align:center;padding:30px;color:#9b8c84">No members yet</td></tr>':d.allSignups.map((s,i)=>'<tr><td><span class="badge">'+(d.total-i)+'</span></td><td>'+s.name+'</td><td style="color:#c4923a">'+s.email+'</td><td>'+new Date(s.joined).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+'</td></tr>').join('');
+  const ef=document.getElementById('cc-errors-feed');
+  ef.innerHTML=d.errors.length===0?'<div class="empty" style="color:#16a34a">No errors detected</div>':d.errors.map(e=>'<div class="eitem"><span class="etime">'+new Date(e.ts).toLocaleTimeString()+'</span>'+e.msg.substring(0,120)+'</div>').join('');
+  document.getElementById('cc-refresh').textContent='Last updated: '+new Date().toLocaleTimeString();
 }
 async function ccAI(type,btnId,outId,copyId){
   const btn=document.getElementById(btnId);
   btn.disabled=true;btn.textContent='Generating...';
   try{
-    const res=await fetch('/api/command/ai',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':ccToken},body:JSON.stringify({type})});
+    const res=await fetch('/api/command/ai?token='+encodeURIComponent(ccToken),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type})});
     const data=await res.json();
     const out=document.getElementById(outId);
     out.textContent=data.content||data.error;
@@ -468,7 +488,7 @@ async function ccDiscord(channel,outId,btnId){
   if(!content){alert('Generate content first');return;}
   btn.disabled=true;btn.textContent='Posting...';
   try{
-    const res=await fetch('/api/discord/post',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':ccToken},body:JSON.stringify({channelId:DISCORD_CHANNELS[channel],content})});
+    const res=await fetch('/api/discord/post?token='+encodeURIComponent(ccToken),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channelId:DISCORD_CHANNELS[channel],content})});
     const data=await res.json();
     if(data.ok){btn.textContent='Posted!';btn.style.background='#16a34a';}
     else{btn.textContent='Failed';alert(data.error||'Post failed');}
@@ -476,10 +496,10 @@ async function ccDiscord(channel,outId,btnId){
   btn.disabled=false;
   setTimeout(()=>{btn.textContent=channel==='general'?'Post to #general':'Post to #aria-updates';btn.style.background='';},3000);
 }
-function ccExport(){window.open('/api/admin/export?token='+ccToken,'_blank');}
+function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
 async function ccLoadVisitors(){
   try{
-    const res=await fetch('/api/command/visitors',{headers:{'x-admin-token':ccToken}});
+    const res=await fetch('/api/command/visitors?token='+encodeURIComponent(ccToken));
     const d=await res.json();
     document.getElementById('cc-vtotal').textContent=d.total;
     document.getElementById('cc-vtoday').textContent=d.today;
@@ -492,25 +512,17 @@ async function ccLoadVisitors(){
   }catch(e){console.error(e);}
 }
 setInterval(()=>{if(ccToken)ccLoad();},60000);
-  try{
-    const res=await fetch('/api/command/visitors',{headers:{'x-admin-token':ccToken}});
-    const d=await res.json();
-    document.getElementById('cc-vtotal').textContent=d.total;
-    document.getElementById('cc-vtoday').textContent=d.today;
-    document.getElementById('cc-vweek').textContent=d.week;
-    const sources=document.getElementById('cc-sources');
-    const entries=Object.entries(d.sources||{}).sort((a,b)=>b[1]-a[1]);
-    sources.innerHTML=entries.length===0?'<div class="empty">No data yet — share your landing page!</div>':entries.map(([src,cnt])=>'<div class="sitem"><div class="sname">'+src+'</div><div class="stime">'+cnt+' visits</div></div>').join('');
-    const vr=document.getElementById('cc-vrecent');
-    vr.innerHTML=d.recent.length===0?'<div class="empty">No visits yet</div>':d.recent.map(v=>'<div class="sitem"><div><div class="sname">'+(v.ref?v.ref.substring(0,40):'Direct visit')+'</div><div class="semail">'+new Date(v.ts).toLocaleTimeString()+'</div></div></div>').join('');
-  }catch(e){console.error(e);}
-}
 
 </script>
-</body></html>`));
+</body></html>`);
+});
 
 /* ── Deploy Panel ── */
-app.get('/deploy-panel', (_req, res) => res.send(`<!DOCTYPE html>
+app.get('/deploy-panel', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -679,7 +691,8 @@ async function dpDeployAll(){
 }
 dpHealth();
 </script>
-</body></html>`));
+</body></html>`);
+});
 
 /* ── Claude proxy ── */
 app.post('/api/chat', async (req, res) => {
