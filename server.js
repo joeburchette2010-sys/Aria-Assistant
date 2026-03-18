@@ -504,25 +504,8 @@ function ccTab(name){
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',['overview','agent','members','visitors','ai','errors'][i]===name));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.getElementById('cc-'+name).classList.add('active');
-  if(name==='visitors') ccLoadVisitors();
-  if(name==='agent') ccLoadAgent();
-}
-async function ccLoadAgent(){
-  try{
-    const res=await fetch('/api/agent/log?token='+encodeURIComponent(ccToken));
-    const d=await res.json();
-    document.getElementById('cc-agent-total').textContent=d.total;
-    const feed=document.getElementById('cc-agent-feed');
-    if(!d.log||d.log.length===0){
-      feed.innerHTML='<div class="empty">No agent activity yet — agent runs daily at 9 AM UTC</div>';
-    }else{
-      feed.innerHTML=d.log.map(e=>'<div class="sitem"><div><div class="sname">'+e.action+'</div><div class="semail">'+e.details+'</div></div><div style="text-align:right"><div class="stime">'+new Date(e.ts).toLocaleTimeString()+'</div><div style="font-size:10px;color:'+(e.status==='completed'?'#16a34a':'#dc2626')+';margin-top:2px">'+e.status+'</div></div></div>').join('');
-      const briefing=d.log.find(e=>e.action==='Daily Briefing');
-      if(briefing){
-        document.getElementById('cc-agent-briefing').innerHTML='<div style="font-size:13px;line-height:1.8;white-space:pre-wrap">'+briefing.details+'</div><div class="stime" style="margin-top:8px">Generated: '+new Date(briefing.ts).toLocaleString()+'</div>';
-      }
-    }
-  }catch(e){console.error(e);}
+  if(name==='visitors')ccLoadVisitors();
+  if(name==='agent')ccLoadAgent();
 }
 async function ccLoad(){
   try{
@@ -541,7 +524,21 @@ async function ccLoad(){
     document.getElementById('cc-refresh').textContent='Last updated: '+new Date().toLocaleTimeString();
   }catch(e){console.error(e);}
 }
-function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
+async function ccLoadAgent(){
+  try{
+    const res=await fetch('/api/agent/log?token='+encodeURIComponent(ccToken));
+    const d=await res.json();
+    document.getElementById('cc-agent-total').textContent=d.total;
+    const feed=document.getElementById('cc-agent-feed');
+    if(!d.log||d.log.length===0){
+      feed.innerHTML='<div class="empty">No agent activity yet</div>';
+    }else{
+      feed.innerHTML=d.log.map(e=>'<div class="sitem"><div><div class="sname">'+e.action+'</div><div class="semail">'+e.details.substring(0,80)+'</div></div><div style="text-align:right"><div class="stime">'+new Date(e.ts).toLocaleTimeString()+'</div><div style="font-size:10px;color:'+(e.status==='completed'?'#16a34a':'#dc2626')+';margin-top:2px">'+e.status+'</div></div></div>').join('');
+      const briefing=d.log.find(e=>e.action==='Daily Briefing');
+      if(briefing)document.getElementById('cc-agent-briefing').innerHTML='<div style="font-size:13px;line-height:1.8;white-space:pre-wrap">'+briefing.details+'</div><div class="stime" style="margin-top:8px">Generated: '+new Date(briefing.ts).toLocaleString()+'</div>';
+    }
+  }catch(e){console.error(e);}
+}
 async function ccLoadVisitors(){
   try{
     const res=await fetch('/api/command/visitors?token='+encodeURIComponent(ccToken));
@@ -554,7 +551,7 @@ async function ccLoadVisitors(){
     document.getElementById('cc-vrecent').innerHTML=d.recent.length===0?'<div class="empty">No visits yet</div>':d.recent.map(v=>'<div class="sitem"><div><div class="sname">'+(v.ref?v.ref.substring(0,40):'Direct visit')+'</div></div><div class="stime">'+new Date(v.ts).toLocaleTimeString()+'</div></div>').join('');
   }catch(e){console.error(e);}
 }
-setInterval(()=>{if(ccToken)ccLoad();},60000);
+async function ccAI(type,btnId,outId,copyId){
   const btn=document.getElementById(btnId);
   btn.disabled=true;btn.textContent='Generating...';
   try{
@@ -567,11 +564,7 @@ setInterval(()=>{if(ccToken)ccLoad();},60000);
   }catch(e){document.getElementById(outId).textContent='Failed.';document.getElementById(outId).style.display='block';}
   btn.disabled=false;btn.textContent=type==='newsletter'?'Redraft':'Regenerate';
 }
-function ccCopy(outId,btnId){
-  navigator.clipboard.writeText(document.getElementById(outId).textContent);
-  const btn=document.getElementById(btnId);btn.textContent='Copied!';btn.classList.add('ok');
-  setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('ok');},2000);
-}
+function ccCopy(outId,btnId){navigator.clipboard.writeText(document.getElementById(outId).textContent);const btn=document.getElementById(btnId);btn.textContent='Copied!';btn.classList.add('ok');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('ok');},2000);}
 async function ccDiscord(channel,outId,btnId){
   const btn=document.getElementById(btnId);
   const content=document.getElementById(outId).textContent;
@@ -586,6 +579,8 @@ async function ccDiscord(channel,outId,btnId){
   btn.disabled=false;
   setTimeout(()=>{btn.textContent=channel==='general'?'Post to #general':'Post to #aria-updates';btn.style.background='';},3000);
 }
+function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
+setInterval(()=>{if(ccToken)ccLoad();},60000);
 </script>
 </body></html>`));
 
