@@ -121,21 +121,17 @@ app.get('/api/admin/export', adminAuth, (req, res) => {
 
 /* ── Agent log endpoint (called by Cloudflare Worker) ── */
 app.post('/api/agent/log', (req, res) => {
-  const { secret, action, details, status, briefing } = req.body;
-  if (!deployAuth(secret)) return res.status(401).json({ error: 'Unauthorized' });
-  const entry = { ts: new Date().toISOString(), action, details, status: status || 'success' };
-  agentLog.unshift(entry);
-  if (agentLog.length > 100) agentLog.pop();
-  if (briefing) lastBriefing = { ts: new Date().toISOString(), content: briefing };
-  console.log(`AGENT: ${action} — ${details}`);
-
-  // Log to Google Sheets
-  const webhook = process.env.SHEETS_WEBHOOK;
-  if (webhook) {
-    fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: `AGENT: ${action}`, email: details, joined: new Date().toISOString(), ts: new Date().toLocaleString('en-US',{timeZone:'America/New_York'}) })
-    }).catch(()=>{});
+  const headerSecret = req.headers['x-agent-secret'] || '';
+  const bodySecret   = req.body.secret || '';
+  const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
+  if (headerSecret !== deploySecret && bodySecret !== deploySecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
+  const { action, details, status } = req.body;
+  const entry = { ts: new Date().toISOString(), action: action||'Action', details: details||'', status: status||'completed' };
+  agentLog.unshift(entry);
+  if (agentLog.length > 200) agentLog.pop();
+  console.log(`AGENT: ${entry.action} — ${entry.status}`);
   res.json({ ok: true });
 });
 
@@ -261,16 +257,6 @@ app.post('/api/deploy-latest', async (req, res) => {
 app.get('/admin', (_req, res) => res.redirect('/command'));
 
 /* ── Agent Activity Log ── */
-app.post('/api/agent/log', (req, res) => {
-  const secret = req.headers['x-agent-secret'] || req.query.secret;
-  if (secret !== (process.env.DEPLOY_SECRET || 'aria-deploy-2025')) return res.status(401).json({ error: 'Unauthorized' });
-  const { action, details, status } = req.body;
-  const entry = { ts: new Date().toISOString(), action: action||'Action', details: details||'', status: status||'completed' };
-  agentLog.unshift(entry);
-  if (agentLog.length > 200) agentLog.pop();
-  console.log(`AGENT: ${entry.action} — ${entry.status}`);
-  res.json({ ok: true });
-});
 app.get('/api/agent/log', adminAuth, (req, res) => {
   res.json({ total: agentLog.length, log: agentLog.slice(0, 50) });
 });
