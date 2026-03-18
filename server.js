@@ -260,7 +260,22 @@ app.post('/api/deploy-latest', async (req, res) => {
 /* ── Admin redirects to command ── */
 app.get('/admin', (_req, res) => res.redirect('/command'));
 
-/* ── Landing page ── */
+/* ── Agent Activity Log ── */
+app.post('/api/agent/log', (req, res) => {
+  const secret = req.headers['x-agent-secret'] || req.query.secret;
+  if (secret !== (process.env.DEPLOY_SECRET || 'aria-deploy-2025')) return res.status(401).json({ error: 'Unauthorized' });
+  const { action, details, status } = req.body;
+  const entry = { ts: new Date().toISOString(), action: action||'Action', details: details||'', status: status||'completed' };
+  agentLog.unshift(entry);
+  if (agentLog.length > 200) agentLog.pop();
+  console.log(`AGENT: ${entry.action} — ${entry.status}`);
+  res.json({ ok: true });
+});
+app.get('/api/agent/log', adminAuth, (req, res) => {
+  res.json({ total: agentLog.length, log: agentLog.slice(0, 50) });
+});
+
+
 app.get('/home', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', 'home.html'));
@@ -416,6 +431,22 @@ tr:last-child td{border:none}
   </div>
 
   <!-- MEMBERS -->
+  <div class="tab-content" id="cc-agent">
+    <div class="sgrid" style="margin-bottom:16px">
+      <div class="stat"><div class="sval" id="cc-agent-total">0</div><div class="slbl">Total Actions</div></div>
+      <div class="stat"><div class="sval" id="cc-agent-status" style="font-size:14px;color:#16a34a">Active</div><div class="slbl">Agent Status</div></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Agent Activity Log</div>
+      <div class="psub">Every action your autonomous agent has taken</div>
+      <div id="cc-agent-feed"><div class="empty">No agent activity yet — agent runs daily at 9 AM UTC</div></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Daily Briefing</div>
+      <div class="psub">Latest report from your agent</div>
+      <div id="cc-agent-briefing"><div class="empty">Briefing will appear here after the agent's next run</div></div>
+    </div>
+  </div>
   <div class="tab-content" id="cc-members">
     <div class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -489,6 +520,23 @@ function ccTab(name){
   document.getElementById('cc-'+name).classList.add('active');
   if(name==='visitors') ccLoadVisitors();
   if(name==='agent') ccLoadAgent();
+}
+async function ccLoadAgent(){
+  try{
+    const res=await fetch('/api/agent/log?token='+encodeURIComponent(ccToken));
+    const d=await res.json();
+    document.getElementById('cc-agent-total').textContent=d.total;
+    const feed=document.getElementById('cc-agent-feed');
+    if(!d.log||d.log.length===0){
+      feed.innerHTML='<div class="empty">No agent activity yet — agent runs daily at 9 AM UTC</div>';
+    }else{
+      feed.innerHTML=d.log.map(e=>'<div class="sitem"><div><div class="sname">'+e.action+'</div><div class="semail">'+e.details+'</div></div><div style="text-align:right"><div class="stime">'+new Date(e.ts).toLocaleTimeString()+'</div><div style="font-size:10px;color:'+(e.status==='completed'?'#16a34a':'#dc2626')+';margin-top:2px">'+e.status+'</div></div></div>').join('');
+      const briefing=d.log.find(e=>e.action==='Daily Briefing');
+      if(briefing){
+        document.getElementById('cc-agent-briefing').innerHTML='<div style="font-size:13px;line-height:1.8;white-space:pre-wrap">'+briefing.details+'</div><div class="stime" style="margin-top:8px">Generated: '+new Date(briefing.ts).toLocaleString()+'</div>';
+      }
+    }
+  }catch(e){console.error(e);}
 }
 async function ccLoad(){
   try{
