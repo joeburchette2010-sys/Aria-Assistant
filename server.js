@@ -541,20 +541,8 @@ async function ccLoad(){
     document.getElementById('cc-refresh').textContent='Last updated: '+new Date().toLocaleTimeString();
   }catch(e){console.error(e);}
 }
-async function ccLoadAgent(){
-  try{
-    const res=await fetch('/api/agent/stats?token='+encodeURIComponent(ccToken));
-    const d=await res.json();
-    document.getElementById('cc-atotal').textContent=d.total;
-    document.getElementById('cc-atoday').textContent=d.today;
-    document.getElementById('cc-astatus').textContent=d.status;
-    if(d.briefing){
-      document.getElementById('cc-briefing').innerHTML='<div class="briefing-box">'+d.briefing.content+'</div><div style="font-size:11px;color:#9b8c84;margin-top:6px">Received: '+new Date(d.briefing.ts).toLocaleString()+'</div>';
-    }
-    document.getElementById('cc-alog').innerHTML=d.log.length===0?'<div class="empty">No activity yet — agent runs daily at 9 AM UTC</div>':d.log.map(a=>'<div class="alog-item"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="alog-action">'+a.action+'</div><div class="alog-detail">'+a.details+'</div></div><div><span class="alog-status '+a.status+'">'+a.status+'</span></div></div><div class="alog-time">'+new Date(a.ts).toLocaleString()+'</div></div>').join('');
-  }catch(e){console.error(e);}
-}
-async function ccLoadVisitors(){
+function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
+setInterval(()=>{if(ccToken)ccLoad();},60000);
   try{
     const res=await fetch('/api/command/visitors?token='+encodeURIComponent(ccToken));
     const d=await res.json();
@@ -599,7 +587,6 @@ async function ccDiscord(channel,outId,btnId){
   setTimeout(()=>{btn.textContent=channel==='general'?'Post to #general':'Post to #aria-updates';btn.style.background='';},3000);
 }
 function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
-async function ccLoadAgent(){}
 setInterval(()=>{if(ccToken)ccLoad();},60000);
 </script>
 </body></html>`));
