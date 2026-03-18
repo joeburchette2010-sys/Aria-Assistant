@@ -542,7 +542,7 @@ async function ccLoad(){
   }catch(e){console.error(e);}
 }
 function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
-setInterval(()=>{if(ccToken)ccLoad();},60000);
+async function ccLoadVisitors(){
   try{
     const res=await fetch('/api/command/visitors?token='+encodeURIComponent(ccToken));
     const d=await res.json();
@@ -554,7 +554,7 @@ setInterval(()=>{if(ccToken)ccLoad();},60000);
     document.getElementById('cc-vrecent').innerHTML=d.recent.length===0?'<div class="empty">No visits yet</div>':d.recent.map(v=>'<div class="sitem"><div><div class="sname">'+(v.ref?v.ref.substring(0,40):'Direct visit')+'</div></div><div class="stime">'+new Date(v.ts).toLocaleTimeString()+'</div></div>').join('');
   }catch(e){console.error(e);}
 }
-async function ccAI(type,btnId,outId,copyId){
+setInterval(()=>{if(ccToken)ccLoad();},60000);
   const btn=document.getElementById(btnId);
   btn.disabled=true;btn.textContent='Generating...';
   try{
@@ -586,8 +586,6 @@ async function ccDiscord(channel,outId,btnId){
   btn.disabled=false;
   setTimeout(()=>{btn.textContent=channel==='general'?'Post to #general':'Post to #aria-updates';btn.style.background='';},3000);
 }
-function ccExport(){window.open('/api/admin/export?token='+encodeURIComponent(ccToken),'_blank');}
-setInterval(()=>{if(ccToken)ccLoad();},60000);
 </script>
 </body></html>`));
 
