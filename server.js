@@ -155,7 +155,7 @@ app.post('/api/command/ai', adminAuth, async (req, res) => {
   } catch(err) { res.status(502).json({ error: 'AI request failed' }); }
 });
 
-/* ── Discord Webhook post ── */
+/* ── Discord Webhook post via Cloudflare Worker proxy ── */
 app.post('/api/discord/post', adminAuth, async (req, res) => {
   const { channelId, content } = req.body;
   const webhooks = {
@@ -163,21 +163,24 @@ app.post('/api/discord/post', adminAuth, async (req, res) => {
     '1483261092062040184': 'https://discord.com/api/webhooks/1483318309716754472/pAB5yGi_P_28uyBmGp36u18bRDHUi2uTQkBRKVyAWkX-TZoB4y6JyGGJ-atT6oAccavY'
   };
   const webhookUrl = webhooks[channelId];
-  if (!webhookUrl) return res.status(400).json({ error: 'No webhook for channel: ' + channelId });
+  if (!webhookUrl) return res.status(400).json({ error: 'No webhook for channel' });
   try {
-    const r = await fetch(webhookUrl, {
+    // Route through Cloudflare Worker to bypass Render IP block
+    const r = await fetch('https://aria-agent.joeburchette2010.workers.dev/discord', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: content.substring(0, 2000) })
+      body: JSON.stringify({ webhookUrl, content })
     });
-    if (r.ok || r.status === 204) {
-      console.log(`DISCORD WEBHOOK POST: channel ${channelId}`);
+    const data = await r.json();
+    if (data.ok) {
+      console.log(`DISCORD POST via CF Worker: channel ${channelId}`);
       res.json({ ok: true });
     } else {
-      const data = await r.text();
-      res.status(500).json({ error: 'Discord webhook failed: ' + data });
+      res.status(500).json({ error: 'Discord post failed: ' + (data.error || data.status) });
     }
-  } catch(err) { res.status(502).json({ error: 'Discord failed: ' + err.message }); }
+  } catch(err) {
+    res.status(502).json({ error: 'Agent proxy failed: ' + err.message });
+  }
 });
 
 /* ── Deploy endpoint (accepts content from outside) ── */
