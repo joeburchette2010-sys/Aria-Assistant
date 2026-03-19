@@ -3,7 +3,6 @@ const express = require('express');
 const cors    = require('cors');
 const fetch   = require('node-fetch');
 const path    = require('path');
-const fs      = require('fs');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -13,12 +12,11 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-/* ── In-memory stores ── */
-const signups   = [];
-const errorLog  = [];
-const agentLog  = [];
-const visitors  = [];
-let   lastBriefing = null;
+/* ── In-memory fallback stores ── */
+const signups  = [];
+const errorLog = [];
+const agentLog = [];
+const visitors = [];
 
 const _origErr = console.error;
 console.error = (...args) => {
@@ -27,7 +25,53 @@ console.error = (...args) => {
   _origErr(...args);
 };
 
-/* ── Pro email list ── */
+/* ── Supabase client ── */
+const SB_URL = process.env.SUPABASE_URL || '';
+const SB_KEY = process.env.SUPABASE_KEY || '';
+
+async function sbInsert(table, data) {
+  if (!SB_URL || !SB_KEY) return null;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(data)
+    });
+    return res.ok;
+  } catch(e) { console.error('SB insert error:', e.message); return null; }
+}
+
+async function sbSelect(table, params = '') {
+  if (!SB_URL || !SB_KEY) return null;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/${table}${params}`, {
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
+    });
+    return await res.json();
+  } catch(e) { console.error('SB select error:', e.message); return null; }
+}
+
+/* ── Auto-setup Supabase tables ── */
+async function setupSupabase() {
+  if (!SB_URL || !SB_KEY) { console.log('Supabase not configured — using memory'); return; }
+  const sqls = [
+    `CREATE TABLE IF NOT EXISTS users (id bigserial primary key, name text, email text unique, joined timestamptz default now(), pro boolean default false)`,
+    `CREATE TABLE IF NOT EXISTS agent_logs (id bigserial primary key, action text, details text, status text, ts timestamptz default now())`,
+    `CREATE TABLE IF NOT EXISTS visitors (id bigserial primary key, page text, ref text, ts timestamptz default now())`
+  ];
+  for (const q of sqls) {
+    try {
+      await fetch(`${SB_URL}/rest/v1/rpc/exec_sql`, {
+        method: 'POST',
+        headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q })
+      });
+    } catch(e) {}
+  }
+  console.log('✅ Supabase ready');
+}
+
+/* ── Pro users ── */
 const PRO_EMAILS = new Set(['joeburchette2010@gmail.com']);
 function grantPro(email) { PRO_EMAILS.add(email.toLowerCase()); }
 function getModel(email, isPro) {
@@ -35,61 +79,26 @@ function getModel(email, isPro) {
   return 'claude-haiku-4-5-20251001';
 }
 
-/* ── Health ── */
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
-
-/* ── Rate limiter ── */
-const hits = {};
-function rateLimit(ip) {
-  const key = ip + ':' + Math.floor(Date.now() / 60000);
-  hits[key] = (hits[key] || 0) + 1;
-  if (hits[key] > 30) return true;
-  if (Math.random() < 0.01) {
-    const now = Math.floor(Date.now() / 60000);
-    Object.keys(hits).forEach(k => { if (parseInt(k.split(':')[1]) < now - 2) delete hits[k]; });
-  }
-  return false;
-}
-
-/* ── Admin auth ── */
+/* ── Auth helpers ── */
 function adminAuth(req, res, next) {
   const token = (req.headers['x-admin-token'] || req.query.token || '').trim();
-  const adminPassword = (process.env.ADMIN_PASSWORD || 'aria-admin-2025').trim();
-  if (token !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
+  const pass  = (process.env.ADMIN_PASSWORD || 'aria-admin-2025').trim();
+  if (token !== pass) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
-
-/* ── Deploy secret auth ── */
-function deployAuth(secret) {
-  return secret === (process.env.DEPLOY_SECRET || 'aria-deploy-2025');
+function agentAuth(req) {
+  const h = (req.headers['x-agent-secret'] || '').trim();
+  const b = (req.body.secret || '').trim();
+  const s = (process.env.DEPLOY_SECRET || 'AriaCommand').trim();
+  return h === s || b === s;
 }
 
-/* ── GitHub helper ── */
-async function githubPush(filename, content) {
-  const token = process.env.GITHUB_TOKEN;
-  const repo  = process.env.GITHUB_REPO;
-  const email = process.env.GITHUB_EMAIL || 'deploy@aria.app';
-  if (!token || !repo) throw new Error('GitHub env vars not set');
-  const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
-  });
-  const fileData = await getRes.json();
-  if (!fileData.sha) throw new Error('File not found: ' + filename);
-  const ts = new Date().toISOString().replace('T',' ').substring(0,19);
-  const pushRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-    method: 'PUT',
-    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: `Auto-deploy: ${filename} [${ts}]`,
-      content: Buffer.from(content).toString('base64'),
-      sha: fileData.sha,
-      committer: { name: 'ARIA Deploy Bot', email }
-    })
-  });
-  const result = await pushRes.json();
-  if (!result.content && pushRes.status !== 422) throw new Error(result.message || 'Push failed');
-  return true;
-}
+/* ════════════════════════════════
+   API ROUTES
+═══════════════════════════════ */
+
+/* ── Health ── */
+app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 /* ── Signup ── */
 app.post('/api/signup', async (req, res) => {
@@ -97,69 +106,84 @@ app.post('/api/signup', async (req, res) => {
   if (!name || !email) return res.status(400).json({ error: 'Missing fields' });
   const ts = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
   signups.push({ name, email, joined: new Date().toISOString(), ts });
-  console.log(`NEW SIGNUP — Name: ${name} | Email: ${email} | Time: ${ts}`);
+  console.log(`NEW SIGNUP — ${name} | ${email} | ${ts}`);
+  // Write to Supabase
+  await sbInsert('users', { name, email, joined: new Date().toISOString(), pro: false });
+  // Write to Google Sheets
   const webhook = process.env.SHEETS_WEBHOOK;
   if (webhook) {
-    try {
-      await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, joined: new Date().toISOString(), ts, total: signups.length }) });
-    } catch(e) { console.error('Sheets webhook failed:', e.message); }
+    fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, joined: new Date().toISOString(), ts }) }).catch(()=>{});
   }
   res.json({ ok: true });
 });
 
-/* ── Admin API ── */
+/* ── Admin exports ── */
 app.get('/api/admin/signups', adminAuth, (req, res) => {
   res.json({ total: signups.length, signups: signups.slice().reverse() });
 });
-app.get('/api/admin/export', adminAuth, (req, res) => {
-  const csv = ['Name,Email,Joined'].concat(signups.map(s => `"${s.name}","${s.email}","${s.ts}"`)).join('\n');
+app.get('/api/admin/export', adminAuth, async (req, res) => {
+  const sbUsers = await sbSelect('users', '?order=joined.desc');
+  const all = (sbUsers && Array.isArray(sbUsers)) ? sbUsers : signups;
+  const csv = ['Name,Email,Joined'].concat(all.map(s=>`"${s.name}","${s.email}","${s.joined}"`)).join('\n');
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="aria-users.csv"');
   res.send(csv);
 });
 
-/* ── Agent log endpoint (called by Cloudflare Worker) ── */
-app.post('/api/agent/log', (req, res) => {
-  const headerSecret = req.headers['x-agent-secret'] || '';
-  const bodySecret   = req.body.secret || '';
-  const deploySecret = process.env.DEPLOY_SECRET || 'aria-deploy-2025';
-  if (headerSecret !== deploySecret && bodySecret !== deploySecret) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+/* ── Agent log ── */
+app.post('/api/agent/log', async (req, res) => {
+  if (!agentAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
   const { action, details, status } = req.body;
   const entry = { ts: new Date().toISOString(), action: action||'Action', details: details||'', status: status||'completed' };
   agentLog.unshift(entry);
   if (agentLog.length > 200) agentLog.pop();
+  await sbInsert('agent_logs', { action: entry.action, details: entry.details, status: entry.status, ts: entry.ts });
   console.log(`AGENT: ${entry.action} — ${entry.status}`);
   res.json({ ok: true });
 });
 
-/* ── Agent stats API ── */
-app.get('/api/agent/stats', adminAuth, (req, res) => {
+app.get('/api/agent/log', adminAuth, async (req, res) => {
+  const sbData = await sbSelect('agent_logs', '?order=ts.desc&limit=50');
+  if (sbData && Array.isArray(sbData) && sbData.length > 0) {
+    res.json({ total: sbData.length, log: sbData.map(r=>({ ts:r.ts, action:r.action, details:r.details, status:r.status })) });
+  } else {
+    res.json({ total: agentLog.length, log: agentLog.slice(0, 50) });
+  }
+});
+
+app.get('/api/agent/stats', adminAuth, async (req, res) => {
+  const sbData = await sbSelect('agent_logs', '?order=ts.desc&limit=20');
+  const log = (sbData && Array.isArray(sbData)) ? sbData : agentLog.slice(0,20);
   const now = new Date();
   const oneDayAgo = new Date(now - 24*60*60*1000);
-  res.json({
-    total:    agentLog.length,
-    today:    agentLog.filter(a => new Date(a.ts) > oneDayAgo).length,
-    status:   agentLog.length > 0 ? agentLog[0].status : 'idle',
-    log:      agentLog.slice(0, 20),
-    briefing: lastBriefing
-  });
+  res.json({ total: log.length, today: log.filter(a=>new Date(a.ts)>oneDayAgo).length, status: log.length>0?log[0].status:'idle', log });
 });
 
 /* ── Command Center stats ── */
-app.get('/api/command/stats', adminAuth, (req, res) => {
+app.get('/api/command/stats', adminAuth, async (req, res) => {
   const now = new Date();
   const oneDayAgo  = new Date(now - 24*60*60*1000);
   const oneWeekAgo = new Date(now - 7*24*60*60*1000);
+  const sbUsers = await sbSelect('users', '?order=joined.desc');
+  const allUsers = (sbUsers && Array.isArray(sbUsers) && sbUsers.length > 0) ? sbUsers : signups;
   const dailyCounts = [];
   for (let i = 6; i >= 0; i--) {
     const day = new Date(now - i*24*60*60*1000);
+    const label = day.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const dayStr = day.toDateString();
-    dailyCounts.push({ label: day.toLocaleDateString('en-US',{month:'short',day:'numeric'}), count: signups.filter(s=>new Date(s.joined).toDateString()===dayStr).length });
+    dailyCounts.push({ label, count: allUsers.filter(s=>new Date(s.joined).toDateString()===dayStr).length });
   }
-  res.json({ total: signups.length, today: signups.filter(s=>new Date(s.joined)>oneDayAgo).length, week: signups.filter(s=>new Date(s.joined)>oneWeekAgo).length, recentSignups: signups.slice(-5).reverse(), allSignups: signups.slice().reverse(), dailyCounts, errors: errorLog.slice(-10).reverse(), uptime: process.uptime() });
+  res.json({
+    total: allUsers.length,
+    today: allUsers.filter(s=>new Date(s.joined)>oneDayAgo).length,
+    week:  allUsers.filter(s=>new Date(s.joined)>oneWeekAgo).length,
+    recentSignups: allUsers.slice(0,5),
+    allSignups: allUsers,
+    dailyCounts,
+    errors: errorLog.slice(-10).reverse(),
+    uptime: process.uptime()
+  });
 });
 
 /* ── Command Center AI ── */
@@ -167,13 +191,15 @@ app.post('/api/command/ai', adminAuth, async (req, res) => {
   const { type } = req.body;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-  const stats = { totalUsers: signups.length, recentSignups: signups.slice(-5).map(s=>s.name), recentErrors: errorLog.slice(-3).map(e=>e.msg) };
+  const sbUsers = await sbSelect('users', '?order=joined.desc&limit=5');
+  const recentNames = (sbUsers && Array.isArray(sbUsers)) ? sbUsers.map(u=>u.name) : signups.slice(-5).map(s=>s.name);
+  const stats = { totalUsers: (sbUsers&&sbUsers.length)||signups.length, recentSignups: recentNames };
   const prompts = {
     features:    `You are ARIA's product advisor. Based on these stats: ${JSON.stringify(stats)}, suggest the 3 most impactful features to build next for an AI admin assistant. Be specific. Format as numbered list.`,
     newsletter:  `Write a short engaging newsletter update (150 words max) for ARIA, an AI admin assistant. Stats: ${JSON.stringify(stats)}. Tone: founder building in public, genuine and direct.`,
     shareholder: `Write a professional 200-word shareholder update for ARIA. Stats: ${JSON.stringify(stats)}. Cover user growth, product progress, next milestones, revenue potential.`,
-    reddit:      `Write a Reddit post for r/SideProject about ARIA, an AI admin assistant app built solo on an iPad with zero budget. Stats: ${JSON.stringify(stats)}. Compelling title, authentic founder story, what ARIA does, honest progress, ask for feedback. End with: myaria-assistant.onrender.com and wes1504562.substack.com. Format: Title on first line, then body.`,
-    discord:     `Write 3 things for the ARIA Discord (discord.gg/bVTKZqpR):\n1. Welcome message for new members\n2. Pinned getting-started guide\n3. Beta announcement post\nARIA stats: ${JSON.stringify(stats)}. ARIA is an AI admin assistant at myaria-assistant.onrender.com. Tone: warm, excited founder.`
+    reddit:      `Write a Reddit post for r/SideProject about ARIA, an AI admin assistant app built solo on an iPad with zero budget. Stats: ${JSON.stringify(stats)}. Compelling title, authentic founder story, what ARIA does, honest progress, ask for feedback. End with: myaria-assistant.onrender.com`,
+    discord:     `Write 3 things for the ARIA Discord:\n1. Welcome message for new members\n2. Pinned getting-started guide\n3. Beta announcement\nStats: ${JSON.stringify(stats)}. Tone: warm, excited founder.`
   };
   if (!prompts[type]) return res.status(400).json({ error: 'Invalid type' });
   try {
@@ -189,22 +215,32 @@ app.post('/api/command/ai', adminAuth, async (req, res) => {
 });
 
 /* ── Visitor analytics ── */
-app.post('/api/track', (req, res) => {
+app.post('/api/track', async (req, res) => {
   const { page, ref, ts } = req.body;
-  visitors.push({ page, ref, ts, ip: (req.headers['x-forwarded-for']||'unknown').split(',')[0].substring(0,15) });
+  const entry = { page, ref, ts: ts||new Date().toISOString() };
+  visitors.push(entry);
   if (visitors.length > 500) visitors.shift();
+  await sbInsert('visitors', entry);
   res.json({ ok: true });
 });
-app.get('/api/command/visitors', adminAuth, (req, res) => {
+
+app.get('/api/command/visitors', adminAuth, async (req, res) => {
   const now = new Date();
   const oneDayAgo  = new Date(now - 24*60*60*1000);
   const oneWeekAgo = new Date(now - 7*24*60*60*1000);
-  const landing = visitors.filter(v => v.page === 'landing');
-  const sources = {};
-  landing.forEach(v => {
-    try { const src = v.ref ? new URL(v.ref).hostname : 'direct'; sources[src] = (sources[src]||0) + 1; } catch(e) { sources['direct'] = (sources['direct']||0) + 1; }
+  const sbV = await sbSelect('visitors', '?order=ts.desc&limit=200');
+  const all = (sbV && Array.isArray(sbV) && sbV.length > 0) ? sbV : visitors;
+  const sources = all.reduce((acc,v) => {
+    try { const src = v.ref ? new URL(v.ref).hostname : 'direct'; acc[src]=(acc[src]||0)+1; } catch(e) { acc['direct']=(acc['direct']||0)+1; }
+    return acc;
+  }, {});
+  res.json({
+    total: all.length,
+    today: all.filter(v=>new Date(v.ts)>oneDayAgo).length,
+    week:  all.filter(v=>new Date(v.ts)>oneWeekAgo).length,
+    recent: all.slice(0,5),
+    sources
   });
-  res.json({ total: landing.length, today: landing.filter(v=>new Date(v.ts)>oneDayAgo).length, week: landing.filter(v=>new Date(v.ts)>oneWeekAgo).length, recent: landing.slice(-5).reverse(), sources });
 });
 
 /* ── Discord proxy via Cloudflare Worker ── */
@@ -224,50 +260,85 @@ app.post('/api/discord/post', adminAuth, async (req, res) => {
     });
     const data = await r.json();
     if (data.ok) { console.log(`DISCORD POST: channel ${channelId}`); res.json({ ok: true }); }
-    else res.status(500).json({ error: 'Discord post failed: ' + (data.error || data.status) });
-  } catch(err) { res.status(502).json({ error: 'Agent proxy failed: ' + err.message }); }
+    else res.status(500).json({ error: 'Discord failed: ' + (data.error||data.status) });
+  } catch(err) { res.status(502).json({ error: 'Proxy failed: ' + err.message }); }
 });
 
-/* ── Deploy endpoints ── */
+/* ── Deploy via GitHub ── */
 app.post('/api/deploy', async (req, res) => {
-  const { secret, filename, content } = req.body;
-  if (!deployAuth(secret)) return res.status(401).json({ error: 'Invalid deploy secret' });
-  try { await githubPush(filename, content); res.json({ ok: true }); }
-  catch(err) { res.status(500).json({ error: err.message }); }
-});
-app.post('/api/deploy-latest', async (req, res) => {
-  const { secret, filename } = req.body;
-  if (!deployAuth(secret)) return res.status(401).json({ error: 'Invalid deploy secret' });
+  const secret = req.headers['x-deploy-secret'] || req.body.secret;
+  if (secret !== (process.env.DEPLOY_SECRET || 'AriaCommand')) return res.status(401).json({ error: 'Unauthorized' });
+  const { filename, content } = req.body;
+  if (!filename || !content) return res.status(400).json({ error: 'Missing filename or content' });
+  const token = process.env.GITHUB_TOKEN;
+  const repo  = process.env.GITHUB_REPO || 'Joeburchette2010-sys/Aria-Assistant';
+  const email = process.env.GITHUB_EMAIL || 'joeburchette2010@gmail.com';
+  if (!token) return res.status(500).json({ error: 'GITHUB_TOKEN not set' });
   try {
-    const token = process.env.GITHUB_TOKEN;
-    const repo  = process.env.GITHUB_REPO;
-    if (!token || !repo) return res.status(500).json({ error: 'GitHub env vars not set' });
-    const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filename}`, {
-      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+    const apiUrl = `https://api.github.com/repos/${repo}/contents/${filename}`;
+    const getRes = await fetch(apiUrl, { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' } });
+    const existing = await getRes.json();
+    const sha = existing.sha;
+    const putRes = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `Auto-deploy: ${filename} [${new Date().toLocaleString('en-US',{timeZone:'America/New_York'})}]`, content: Buffer.from(content).toString('base64'), sha, committer: { name: 'ARIA Auto-Deploy', email } })
     });
-    const fileData = await getRes.json();
-    if (!fileData.sha) return res.status(404).json({ error: 'File not found: ' + filename });
-    const content = Buffer.from(fileData.content.replace(/\n/g,''), 'base64').toString('utf8');
-    await githubPush(filename, content);
-    res.json({ ok: true, message: `${filename} deployed` });
-  } catch(err) { res.status(500).json({ error: err.message }); }
+    const result = await putRes.json();
+    if (result.commit) res.json({ ok: true, commit: result.commit.sha });
+    else res.status(500).json({ error: 'GitHub push failed', details: result.message });
+  } catch(err) { res.status(502).json({ error: 'Deploy failed: ' + err.message }); }
 });
 
-/* ── Admin redirects to command ── */
+app.post('/api/deploy-latest', async (req, res) => {
+  const secret = req.headers['x-deploy-secret'] || req.body.secret;
+  if (secret !== (process.env.DEPLOY_SECRET || 'AriaCommand')) return res.status(401).json({ error: 'Unauthorized' });
+  const token = process.env.GITHUB_TOKEN;
+  const repo  = process.env.GITHUB_REPO || 'Joeburchette2010-sys/Aria-Assistant';
+  const email = process.env.GITHUB_EMAIL || 'joeburchette2010@gmail.com';
+  if (!token) return res.status(500).json({ error: 'GITHUB_TOKEN not set' });
+  const files = ['server.js', 'public/index.html', 'public/sw.js'];
+  const results = [];
+  for (const filename of files) {
+    try {
+      const apiUrl = `https://api.github.com/repos/${repo}/contents/${filename}`;
+      const getRes = await fetch(apiUrl, { headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' } });
+      const existing = await getRes.json();
+      const content = Buffer.from(existing.content, 'base64').toString('utf8');
+      const putRes = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Auto-deploy: ${filename} [${new Date().toLocaleString('en-US',{timeZone:'America/New_York'})}]`, content: Buffer.from(content).toString('base64'), sha: existing.sha, committer: { name: 'ARIA Auto-Deploy', email } })
+      });
+      const result = await putRes.json();
+      results.push({ file: filename, ok: !!result.commit });
+    } catch(e) { results.push({ file: filename, ok: false, error: e.message }); }
+  }
+  res.json({ ok: true, results });
+});
+
+/* ── Chat (Claude AI proxy) ── */
+app.post('/api/chat', async (req, res) => {
+  const { messages, system, userEmail, isPro } = req.body;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
+  const model = getModel(userEmail, isPro);
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 1024, system: system||'You are ARIA, a professional AI admin assistant. Be concise, professional, and helpful.', messages })
+    });
+    const data = await r.json();
+    if (data.error) return res.status(400).json({ error: data.error.message });
+    res.json({ content: data.content[0].text, model });
+  } catch(err) { res.status(502).json({ error: 'AI request failed: ' + err.message }); }
+});
+
+/* ── Static pages ── */
 app.get('/admin', (_req, res) => res.redirect('/command'));
+app.get('/home', (_req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public','home.html')); });
 
-/* ── Agent Activity Log ── */
-app.get('/api/agent/log', adminAuth, (req, res) => {
-  res.json({ total: agentLog.length, log: agentLog.slice(0, 50) });
-});
-
-
-app.get('/home', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(path.join(__dirname, 'public', 'home.html'));
-});
-
-/* ── Command Center ── */
 app.get('/command', (_req, res) => res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -585,6 +656,7 @@ setInterval(()=>{if(ccToken)ccLoad();},60000);
 </body></html>`));
 
 /* ── Deploy Panel ── */
+
 app.get('/deploy-panel', (_req, res) => res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -734,6 +806,9 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+
+/* ── Start server ── */
+setupSupabase();
 app.listen(PORT, () =>
   console.log(`ARIA running on port ${PORT} [${PROD ? 'production' : 'dev'}]`)
 );
