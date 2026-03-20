@@ -406,7 +406,8 @@ function setMode(m){
   renderChips();
 }
 function renderChips(){
-  document.getElementById('chips').innerHTML=M[mode].chips.map(([l,t])=>`<button class="chip" onclick="quickSend(${JSON.stringify(t)})">${l}</button>`).join('');
+  document.getElementById('chips').innerHTML=M[mode].chips.map(([l,t],i)=>`<button class="chip" onclick="quickSend(chipTexts[${i}])">${l}</button>`).join('');
+  window.chipTexts=M[mode].chips.map(([l,t])=>t);
 }
 function onInput(el){
   el.style.height='auto';
@@ -482,7 +483,7 @@ async function send(){
     const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:M[mode].sys,messages:hist,userEmail:user?.email||'',isPro:user?.pro||false})});
     const data=await res.json();
     if(data.error)throw new Error(data.error);
-    const reply=data.content?.map(b=>b.text||'').join('')||'Something went wrong.';
+    const reply=typeof data.content==='string' ? data.content : (data.content?.map?.(b=>b.text||'').join('')||'Something went wrong.');
     hist.push({role:'assistant',content:reply});
     hideTyping();addMsg('bot',reply);
     setTimeout(showNewsletterBar,2000);
