@@ -474,25 +474,6 @@ tr:last-child td{border:none}
 
   <!-- AGENT -->
   <div class="tab-content" id="cc-agent">
-    <div class="sgrid">
-      <div class="stat"><div class="sval" id="cc-atotal">0</div><div class="slbl">Total Actions</div></div>
-      <div class="stat"><div class="sval" id="cc-atoday">0</div><div class="slbl">Today</div></div>
-      <div class="stat"><div class="sval" id="cc-astatus" style="font-size:14px;margin-top:4px">—</div><div class="slbl">Last Action</div></div>
-    </div>
-    <div class="panel">
-      <div class="ptitle">Daily Briefing</div>
-      <div class="psub">Latest private report from your agent</div>
-      <div id="cc-briefing"><div class="empty">No briefing yet — agent runs daily at 9 AM UTC</div></div>
-    </div>
-    <div class="panel">
-      <div class="ptitle">Agent Activity Log</div>
-      <div class="psub">Every action your agent has taken — private to you</div>
-      <div id="cc-alog"><div class="empty">No activity yet</div></div>
-    </div>
-  </div>
-
-  <!-- MEMBERS -->
-  <div class="tab-content" id="cc-agent">
     <div class="sgrid" style="margin-bottom:16px">
       <div class="stat"><div class="sval" id="cc-agent-total">0</div><div class="slbl">Total Actions</div></div>
       <div class="stat"><div class="sval" id="cc-agent-status" style="font-size:14px;color:#16a34a">Active</div><div class="slbl">Agent Status</div></div>
