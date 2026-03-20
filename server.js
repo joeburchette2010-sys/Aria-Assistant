@@ -37,6 +37,10 @@ async function sbInsert(table, data) {
       headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify(data)
     });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`SB insert ${table} failed: ${res.status} — ${err}`);
+    }
     return res.ok;
   } catch(e) { console.error('SB insert error:', e.message); return null; }
 }
