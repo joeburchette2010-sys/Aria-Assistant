@@ -148,9 +148,9 @@ app.post('/api/agent/log', async (req, res) => {
 });
 
 app.get('/api/agent/log', adminAuth, async (req, res) => {
-  const sbData = await sbSelect('agent_logs', '?order=ts.desc&limit=50');
+  const sbData = await sbSelect('agent_logs', '?order=created_at.desc&limit=50');
   if (sbData && Array.isArray(sbData) && sbData.length > 0) {
-    res.json({ total: sbData.length, log: sbData.map(r=>({ ts:r.ts, action:r.action, details:r.details, status:r.status })) });
+    res.json({ total: sbData.length, log: sbData.map(r=>({ ts:r.created_at, action:r.action, details:r.details, status:r.status })) });
   } else {
     res.json({ total: agentLog.length, log: agentLog.slice(0, 50) });
   }
