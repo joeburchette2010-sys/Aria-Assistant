@@ -327,7 +327,32 @@ const M={
   general:{label:'General',icon:'💬',ph:'Ask me anything about admin tasks...',tag:'Response',tagBg:'#ebe2d5',tagFg:'#6b5e56',eH:'Your admin assistant',eP:'Ask about writing, planning, processes, templates.',chips:[['📋 Prioritize','Help me prioritize my task list for a busy day'],['📞 Call script','Write a script for a difficult client check-in call'],['📣 Announce','Draft a team announcement for a policy change'],['🎤 Outline','Give me a 10-minute stakeholder presentation outline']],sys:`You are ARIA, a professional admin assistant. Help with writing, planning, organizing. Be direct and provide structured, actionable outputs.`}
 };
 let mode='email',hist=[],count=0,busy=false,user=null,plan='pro';
-const SK='aria_s',UK='aria_u';
+const SK='aria_s',UK='aria_u',HK='aria_h';
+
+// Save/load conversation history
+function saveHist(){
+  if(!user) return;
+  const isPro = user.pro || isProUser(user.email);
+  const maxStore = isPro ? 200 : 20;
+  const toStore = { mode, hist: hist.slice(-maxStore), ts: Date.now() };
+  try{ localStorage.setItem(HK+'_'+user.email, JSON.stringify(toStore)); }catch(e){}
+}
+function loadHist(){
+  if(!user) return;
+  try{
+    const stored = JSON.parse(localStorage.getItem(HK+'_'+user.email)||'null');
+    if(!stored) return;
+    // Only restore if less than 24 hours old
+    if(Date.now() - stored.ts > 24*60*60*1000){ localStorage.removeItem(HK+'_'+user.email); return; }
+    hist = stored.hist || [];
+    if(stored.mode && stored.mode !== mode){ mode = stored.mode; setMode(mode, true); }
+    // Replay messages into UI
+    hist.forEach(m => addMsg(m.role, m.content, true));
+  }catch(e){}
+}
+function clearHistStorage(){
+  if(user) localStorage.removeItem(HK+'_'+user.email);
+}
 function getU(){try{return JSON.parse(localStorage.getItem(UK)||'{}')}catch{return{}}}
 function saveU(u){localStorage.setItem(UK,JSON.stringify(u))}
 function showTab(t){
@@ -385,20 +410,22 @@ function login(u){
   const ini=(u.name||'U').split(' ').map(x=>x[0]).join('').toUpperCase().slice(0,2);
   document.getElementById('navAv').textContent=ini;
   document.getElementById('shEmail').textContent=u.email;
-  // Show Pro badge in nav for pro/admin users
   const badge = document.getElementById('navProBadge');
   if(badge) badge.style.display = user.pro ? 'flex' : 'none';
   updateUsage();renderChips();
+  loadHist();
 }
 function doLogout(){
+  clearHistStorage();
   localStorage.removeItem(SK);user=null;hist=[];count=0;
   document.getElementById('app').classList.remove('on');
   document.getElementById('authScreen').style.display='flex';
   clearMsgs();
 }
 (function init(){const s=localStorage.getItem(SK);if(s){try{login(JSON.parse(s))}catch{localStorage.removeItem(SK)}}})();
-function setMode(m){
-  mode=m;hist=[];clearMsgs();
+function setMode(m, restore=false){
+  mode=m;
+  if(!restore){hist=[];clearMsgs();saveHist();}
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('t-'+m).classList.add('active');
   document.getElementById('navBadge').textContent=M[m].icon+' '+M[m].label;
@@ -486,6 +513,7 @@ async function send(){
     const reply=typeof data.content==='string' ? data.content : (data.content?.map?.(b=>b.text||'').join('')||'Something went wrong.');
     hist.push({role:'assistant',content:reply});
     hideTyping();addMsg('bot',reply);
+    saveHist();
     setTimeout(showNewsletterBar,2000);
   }catch(e){
     hideTyping();addMsg('bot','⚠️ '+(e.message||'Could not connect. Please try again.'));
@@ -499,7 +527,7 @@ function clearMsgs(){
   const m=M[mode];
   msgs.innerHTML=`<div class="empty" id="empty"><div class="empty-icon" id="eIcon">${m.icon}</div><div class="empty-h" id="eH">${m.eH}</div><div class="empty-p" id="eP">${m.eP}</div></div>`;
 }
-function clearChat(){hist=[];clearMsgs();toast('Chat cleared')}
+function clearChat(){hist=[];clearMsgs();clearHistStorage();toast('Chat cleared')}
 function exportChat(){
   if(!hist.length){toast('Nothing to export yet');return}
   const txt=hist.map(h=>`[${h.role.toUpperCase()}]\n${h.content}`).join('\n\n---\n\n');
