@@ -447,5 +447,171 @@ footer{border-top:1px solid rgba(196,146,58,0.1);padding:32px 24px;text-align:ce
   }catch(e){}
 })();
 </script>
-</body>
+<!-- ═══════════════════════════════════════════════════════════
+     ARIA LANDING PAGE CHATBOT WIDGET
+     Paste this entire block just before </body> in home.html
+═══════════════════════════════════════════════════════════ -->
+
+<style>
+/* Chat widget */
+.aria-chat-btn{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#c4923a,#e8b060);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 20px rgba(196,146,58,0.4);z-index:9999;transition:transform .2s}
+.aria-chat-btn:hover{transform:scale(1.08)}
+.aria-chat-btn.open{background:linear-gradient(135deg,#0a1628,#162a52)}
+
+.aria-chat-box{position:fixed;bottom:90px;right:24px;width:340px;max-height:500px;background:#0a1628;border-radius:16px;border:1px solid rgba(196,146,58,0.25);display:flex;flex-direction:column;overflow:hidden;z-index:9998;box-shadow:0 8px 40px rgba(0,0,0,0.4);opacity:0;pointer-events:none;transform:translateY(12px);transition:all .25s}
+.aria-chat-box.visible{opacity:1;pointer-events:all;transform:translateY(0)}
+
+.aria-chat-header{padding:14px 16px;background:#0f1f3d;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(196,146,58,0.15)}
+.aria-chat-avatar{width:32px;height:32px;background:linear-gradient(135deg,#c4923a,#e8b060);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#0a1628;font-size:14px;flex-shrink:0}
+.aria-chat-hinfo{flex:1}
+.aria-chat-hname{font-size:13px;font-weight:600;color:#f5f0ea;font-family:'Geist',sans-serif}
+.aria-chat-hstatus{font-size:11px;color:#c4923a;display:flex;align-items:center;gap:4px}
+.aria-chat-dot{width:6px;height:6px;border-radius:50%;background:#16a34a;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.aria-chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:200px;max-height:320px}
+.aria-chat-msgs::-webkit-scrollbar{width:4px}
+.aria-chat-msgs::-webkit-scrollbar-thumb{background:rgba(196,146,58,0.3);border-radius:2px}
+
+.aria-msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;font-family:'Geist',sans-serif}
+.aria-msg.bot{background:#162a52;color:#f5f0ea;align-self:flex-start;border-bottom-left-radius:3px}
+.aria-msg.user{background:#c4923a;color:#0a1628;align-self:flex-end;font-weight:500;border-bottom-right-radius:3px}
+.aria-msg.typing{background:#162a52;color:#9b8c84;font-style:italic}
+
+.aria-chips-wrap{padding:6px 12px 10px;display:flex;flex-wrap:wrap;gap:5px}
+.aria-chip{background:rgba(196,146,58,0.12);border:1px solid rgba(196,146,58,0.3);color:#c4923a;border-radius:100px;padding:5px 11px;font-size:11px;cursor:pointer;font-family:'Geist',sans-serif;transition:all .15s;white-space:nowrap}
+.aria-chip:hover{background:rgba(196,146,58,0.25)}
+
+.aria-chat-input-wrap{padding:10px 12px;border-top:1px solid rgba(196,146,58,0.12);display:flex;gap:8px;align-items:center}
+.aria-chat-input{flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(196,146,58,0.2);border-radius:8px;padding:8px 12px;color:#f5f0ea;font-size:13px;font-family:'Geist',sans-serif;outline:none;resize:none}
+.aria-chat-input::placeholder{color:#6b5e56}
+.aria-chat-input:focus{border-color:rgba(196,146,58,0.5)}
+.aria-chat-send{width:34px;height:34px;background:#c4923a;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.aria-chat-send:hover{background:#e8b060}
+.aria-chat-send svg{width:16px;height:16px;fill:#0a1628}
+
+@media(max-width:400px){.aria-chat-box{width:calc(100vw - 32px);right:16px}}
+</style>
+
+<!-- Chat button -->
+<button class="aria-chat-btn" id="ariaChatBtn" onclick="toggleAriaChat()" title="Chat with ARIA">💬</button>
+
+<!-- Chat box -->
+<div class="aria-chat-box" id="ariaChatBox">
+  <div class="aria-chat-header">
+    <div class="aria-chat-avatar">A</div>
+    <div class="aria-chat-hinfo">
+      <div class="aria-chat-hname">ARIA Assistant</div>
+      <div class="aria-chat-hstatus"><span class="aria-chat-dot"></span>Online — Ask me anything</div>
+    </div>
+  </div>
+
+  <div class="aria-chat-msgs" id="ariaChatMsgs">
+    <div class="aria-msg bot">👋 Hi! I'm ARIA. Ask me anything about what I can do, pricing, or how to get started!</div>
+  </div>
+
+  <div class="aria-chips-wrap" id="ariaChips">
+    <button class="aria-chip" onclick="ariaAsk('What can ARIA do?')">What can ARIA do?</button>
+    <button class="aria-chip" onclick="ariaAsk('How much does it cost?')">Pricing</button>
+    <button class="aria-chip" onclick="ariaAsk('How do I get started?')">Get started</button>
+    <button class="aria-chip" onclick="ariaAsk('What makes ARIA different?')">Why ARIA?</button>
+  </div>
+
+  <div class="aria-chat-input-wrap">
+    <input class="aria-chat-input" id="ariaInput" placeholder="Ask about ARIA..." onkeydown="if(event.key==='Enter')ariaSend()">
+    <button class="aria-chat-send" onclick="ariaSend()">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+const ARIA_CHAT_SYSTEM = `You are ARIA's landing page assistant. Your ONLY job is to answer questions about ARIA — the AI admin assistant at myaria-assistant.onrender.com.
+
+ARIA facts:
+- ARIA is an AI-powered admin assistant that handles emails, scheduling, document summaries, and general admin tasks
+- Built by Wes Burchette, solo founder, North Potomac MD
+- Powered by Anthropic's Claude AI (Sonnet for Pro, Haiku for Free)
+- Available as a Progressive Web App — installable on any device, no app store needed
+- Free tier: 20 messages, all 4 modes, no credit card required
+- Pro tier: $12/month — unlimited messages, priority AI (Sonnet model), export history
+- Team tier: $39/month — 5 seats, shared workspace, admin dashboard
+- 4 modes: Email Drafting, Scheduling & Agendas, Document Summary, General Admin
+- Community: discord.gg/bVTKZqpR | Newsletter: wes1504562.substack.com
+
+Rules:
+- ONLY answer questions about ARIA. If asked anything else, politely redirect to ARIA topics.
+- Always end responses with a gentle CTA to try ARIA free or sign up.
+- Keep responses under 80 words. Be warm, clear, and helpful.
+- Never make up features that don't exist.`;
+
+let ariaBusy = false;
+let ariaOpen = false;
+
+function toggleAriaChat() {
+  ariaOpen = !ariaOpen;
+  document.getElementById('ariaChatBox').classList.toggle('visible', ariaOpen);
+  document.getElementById('ariaChatBtn').classList.toggle('open', ariaOpen);
+  document.getElementById('ariaChatBtn').textContent = ariaOpen ? '✕' : '💬';
+  if (ariaOpen) document.getElementById('ariaInput').focus();
+}
+
+function ariaAddMsg(role, text) {
+  const msgs = document.getElementById('ariaChatMsgs');
+  const div = document.createElement('div');
+  div.className = `aria-msg ${role}`;
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+async function ariaAsk(text) {
+  document.getElementById('ariaChips').style.display = 'none';
+  await ariaSendMsg(text);
+}
+
+async function ariaSend() {
+  const input = document.getElementById('ariaInput');
+  const text = input.value.trim();
+  if (!text || ariaBusy) return;
+  input.value = '';
+  document.getElementById('ariaChips').style.display = 'none';
+  await ariaSendMsg(text);
+}
+
+async function ariaSendMsg(text) {
+  if (ariaBusy) return;
+  ariaBusy = true;
+  ariaAddMsg('user', text);
+  const typing = ariaAddMsg('typing', 'ARIA is thinking…');
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: ARIA_CHAT_SYSTEM,
+        messages: [{ role: 'user', content: text }],
+        userEmail: 'visitor@landing',
+        isPro: false
+      })
+    });
+    const data = await res.json();
+    const reply = typeof data.content === 'string' ? data.content : 'I\'m having trouble connecting. Try visiting myaria-assistant.onrender.com directly!';
+    typing.className = 'aria-msg bot';
+    typing.textContent = reply;
+  } catch(e) {
+    typing.className = 'aria-msg bot';
+    typing.textContent = 'Having trouble connecting right now. Try myaria-assistant.onrender.com to use ARIA directly!';
+  }
+
+  ariaBusy = false;
+  document.getElementById('ariaChatMsgs').scrollTop = 99999;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     END ARIA CHATBOT WIDGET
+═══════════════════════════════════════════════════════════ --></body>
 </html>
