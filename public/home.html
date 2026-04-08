@@ -15,96 +15,604 @@
     --parchment: #F0ECE3;
     --white: #ffffff;
   }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
   html { scroll-behavior: smooth; }
-  body { background: var(--midnight); color: var(--parchment); font-family: 'IBM Plex Sans', sans-serif; overflow-x: hidden; }
-  body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; opacity: 0.4; }
-  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 2rem; background: rgba(13, 18, 32, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(201, 168, 76, 0.15); }
-  .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; letter-spacing: 0.12em; color: var(--gold); text-decoration: none; }
-  .nav-links { display: flex; gap: 1.5rem; align-items: center; }
-  .nav-links a { color: var(--slate); text-decoration: none; font-size: 0.85rem; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; transition: color 0.2s; }
+
+  body {
+    background: var(--midnight);
+    color: var(--parchment);
+    font-family: 'IBM Plex Sans', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE TEXTURE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.2rem 2rem;
+    background: rgba(13, 18, 32, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(201, 168, 76, 0.15);
+  }
+
+  .nav-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+    text-decoration: none;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+  }
+
+  .nav-links a {
+    color: var(--slate);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+
   .nav-links a:hover { color: var(--gold); }
-  .btn-nav { background: var(--gold); color: var(--midnight) !important; padding: 0.5rem 1.2rem; border-radius: 4px; font-weight: 600 !important; transition: background 0.2s !important; }
+
+  .btn-nav {
+    background: var(--gold);
+    color: var(--midnight) !important;
+    padding: 0.5rem 1.2rem;
+    border-radius: 4px;
+    font-weight: 600 !important;
+    transition: background 0.2s !important;
+  }
+
   .btn-nav:hover { background: var(--gold-light) !important; }
-  .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8rem 2rem 4rem; position: relative; z-index: 1; }
-  .hero-eyebrow { font-family: 'IBM Plex Sans', sans-serif; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.25em; text-transform: uppercase; color: var(--gold); margin-bottom: 1.5rem; opacity: 0; animation: fadeUp 0.8s ease forwards 0.2s; }
-  .hero h1 { font-family: 'Bebas Neue', sans-serif; font-size: clamp(3.5rem, 10vw, 8rem); letter-spacing: 0.06em; line-height: 0.95; color: var(--white); margin-bottom: 1rem; opacity: 0; animation: fadeUp 0.8s ease forwards 0.4s; }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 8rem 2rem 4rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-eyebrow {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.2s;
+  }
+
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(3.5rem, 10vw, 8rem);
+    letter-spacing: 0.06em;
+    line-height: 0.95;
+    color: var(--white);
+    margin-bottom: 1rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.4s;
+  }
+
   .hero h1 span { color: var(--gold); }
-  .hero-sub { font-family: 'Libre Baskerville', serif; font-style: italic; font-size: clamp(1rem, 2.5vw, 1.35rem); color: var(--slate); max-width: 540px; line-height: 1.6; margin-bottom: 3rem; opacity: 0; animation: fadeUp 0.8s ease forwards 0.6s; }
-  .hero-cta { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; opacity: 0; animation: fadeUp 0.8s ease forwards 0.8s; }
-  .btn-primary { background: var(--gold); color: var(--midnight); padding: 0.9rem 2.2rem; border-radius: 4px; font-weight: 700; font-size: 0.9rem; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; transition: background 0.2s, transform 0.15s; border: none; cursor: pointer; }
-  .btn-primary:hover { background: var(--gold-light); transform: translateY(-2px); }
-  .btn-secondary { background: transparent; color: var(--parchment); padding: 0.9rem 2.2rem; border-radius: 4px; font-weight: 500; font-size: 0.9rem; letter-spacing: 0.06em; text-decoration: none; border: 1px solid rgba(240, 236, 227, 0.3); transition: border-color 0.2s, color 0.2s; }
-  .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
-  .hero-glow { position: absolute; width: 600px; height: 600px; background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-  .section { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; }
-  .section-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--gold); margin-bottom: 1rem; }
-  .section-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(2.5rem, 6vw, 4.5rem); letter-spacing: 0.05em; line-height: 1; color: var(--white); margin-bottom: 1rem; }
-  .section-desc { font-family: 'Libre Baskerville', serif; font-style: italic; color: var(--slate); font-size: 1rem; max-width: 500px; line-height: 1.7; margin-bottom: 3.5rem; }
-  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
-  .feature-card { background: rgba(26, 37, 64, 0.5); border: 1px solid rgba(139, 163, 201, 0.12); border-radius: 8px; padding: 2rem; transition: border-color 0.2s, transform 0.2s; position: relative; overflow: hidden; }
-  .feature-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--gold); transform: scaleX(0); transform-origin: left; transition: transform 0.3s ease; }
-  .feature-card:hover { border-color: rgba(201, 168, 76, 0.3); transform: translateY(-4px); }
+
+  .hero-sub {
+    font-family: 'Libre Baskerville', serif;
+    font-style: italic;
+    font-size: clamp(1rem, 2.5vw, 1.35rem);
+    color: var(--slate);
+    max-width: 540px;
+    line-height: 1.6;
+    margin-bottom: 3rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.6s;
+  }
+
+  .hero-cta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.8s;
+  }
+
+  .btn-primary {
+    background: var(--gold);
+    color: var(--midnight);
+    padding: 0.9rem 2.2rem;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.15s;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-primary:hover {
+    background: var(--gold-light);
+    transform: translateY(-2px);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--parchment);
+    padding: 0.9rem 2.2rem;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    border: 1px solid rgba(240, 236, 227, 0.3);
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  /* ── GLOW ── */
+  .hero-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  /* ── FEATURES ── */
+  .section {
+    padding: 6rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .section-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    letter-spacing: 0.05em;
+    line-height: 1;
+    color: var(--white);
+    margin-bottom: 1rem;
+  }
+
+  .section-desc {
+    font-family: 'Libre Baskerville', serif;
+    font-style: italic;
+    color: var(--slate);
+    font-size: 1rem;
+    max-width: 500px;
+    line-height: 1.7;
+    margin-bottom: 3.5rem;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .feature-card {
+    background: rgba(26, 37, 64, 0.5);
+    border: 1px solid rgba(139, 163, 201, 0.12);
+    border-radius: 8px;
+    padding: 2rem;
+    transition: border-color 0.2s, transform 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--gold);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+
+  .feature-card:hover {
+    border-color: rgba(201, 168, 76, 0.3);
+    transform: translateY(-4px);
+  }
+
   .feature-card:hover::before { transform: scaleX(1); }
-  .feature-icon { font-size: 1.8rem; margin-bottom: 1rem; }
-  .feature-card h3 { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 0.08em; color: var(--parchment); margin-bottom: 0.6rem; }
-  .feature-card p { font-size: 0.875rem; color: var(--slate); line-height: 1.65; }
-  .divider { border: none; border-top: 1px solid rgba(139, 163, 201, 0.1); max-width: 1100px; margin: 0 auto; }
-  .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-top: 3.5rem; }
-  .price-card { background: rgba(26, 37, 64, 0.4); border: 1px solid rgba(139, 163, 201, 0.12); border-radius: 8px; padding: 2.5rem 2rem; text-align: center; transition: transform 0.2s, border-color 0.2s; }
-  .price-card:hover { transform: translateY(-4px); border-color: rgba(201, 168, 76, 0.25); }
-  .price-card.featured { border-color: var(--gold); background: rgba(201, 168, 76, 0.06); position: relative; }
-  .price-card.featured::after { content: 'MOST POPULAR'; position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: var(--gold); color: var(--midnight); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.15em; padding: 0.25rem 0.9rem; border-radius: 0 0 4px 4px; }
-  .price-tier { font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 0.15em; color: var(--slate); margin-bottom: 0.75rem; }
-  .price-amount { font-family: 'Bebas Neue', sans-serif; font-size: 3.5rem; letter-spacing: 0.04em; color: var(--white); line-height: 1; }
-  .price-amount sup { font-size: 1.5rem; vertical-align: super; color: var(--gold); }
-  .price-period { font-size: 0.8rem; color: var(--slate); margin-bottom: 2rem; display: block; }
-  .price-features { list-style: none; margin-bottom: 2rem; text-align: left; }
-  .price-features li { font-size: 0.85rem; color: var(--parchment); padding: 0.45rem 0; border-bottom: 1px solid rgba(139, 163, 201, 0.08); display: flex; align-items: center; gap: 0.6rem; }
-  .price-features li::before { content: '✓'; color: var(--gold); font-weight: 700; font-size: 0.75rem; flex-shrink: 0; }
-  #chat-widget { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 200; }
-  #chat-toggle { width: 56px; height: 56px; border-radius: 50%; background: var(--gold); border: none; cursor: pointer; font-size: 1.4rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 24px rgba(201, 168, 76, 0.4); transition: transform 0.2s, background 0.2s; margin-left: auto; }
-  #chat-toggle:hover { transform: scale(1.08); background: var(--gold-light); }
-  #chat-box { display: none; width: 340px; background: var(--navy); border: 1px solid rgba(201, 168, 76, 0.25); border-radius: 12px; overflow: hidden; box-shadow: 0 16px 48px rgba(0,0,0,0.5); margin-bottom: 0.75rem; flex-direction: column; }
+
+  .feature-icon {
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+  }
+
+  .feature-card h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 0.08em;
+    color: var(--parchment);
+    margin-bottom: 0.6rem;
+  }
+
+  .feature-card p {
+    font-size: 0.875rem;
+    color: var(--slate);
+    line-height: 1.65;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    border: none;
+    border-top: 1px solid rgba(139, 163, 201, 0.1);
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ── PRICING ── */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+    margin-top: 3.5rem;
+  }
+
+  .price-card {
+    background: rgba(26, 37, 64, 0.4);
+    border: 1px solid rgba(139, 163, 201, 0.12);
+    border-radius: 8px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+
+  .price-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(201, 168, 76, 0.25);
+  }
+
+  .price-card.featured {
+    border-color: var(--gold);
+    background: rgba(201, 168, 76, 0.06);
+    position: relative;
+  }
+
+  .price-card.featured::after {
+    content: 'MOST POPULAR';
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gold);
+    color: var(--midnight);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    padding: 0.25rem 0.9rem;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .price-tier {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.2rem;
+    letter-spacing: 0.15em;
+    color: var(--slate);
+    margin-bottom: 0.75rem;
+  }
+
+  .price-amount {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3.5rem;
+    letter-spacing: 0.04em;
+    color: var(--white);
+    line-height: 1;
+  }
+
+  .price-amount sup {
+    font-size: 1.5rem;
+    vertical-align: super;
+    color: var(--gold);
+  }
+
+  .price-period {
+    font-size: 0.8rem;
+    color: var(--slate);
+    margin-bottom: 2rem;
+    display: block;
+  }
+
+  .price-features {
+    list-style: none;
+    margin-bottom: 2rem;
+    text-align: left;
+  }
+
+  .price-features li {
+    font-size: 0.85rem;
+    color: var(--parchment);
+    padding: 0.45rem 0;
+    border-bottom: 1px solid rgba(139, 163, 201, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .price-features li::before {
+    content: '✓';
+    color: var(--gold);
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  /* ── CHAT WIDGET ── */
+  #chat-widget {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 200;
+  }
+
+  #chat-toggle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--gold);
+    border: none;
+    cursor: pointer;
+    font-size: 1.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 24px rgba(201, 168, 76, 0.4);
+    transition: transform 0.2s, background 0.2s;
+    margin-left: auto;
+  }
+
+  #chat-toggle:hover {
+    transform: scale(1.08);
+    background: var(--gold-light);
+  }
+
+  #chat-box {
+    display: none;
+    width: 340px;
+    background: var(--navy);
+    border: 1px solid rgba(201, 168, 76, 0.25);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    margin-bottom: 0.75rem;
+    flex-direction: column;
+  }
+
   #chat-box.open { display: flex; }
-  .chat-header { background: rgba(13,18,32,0.8); padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(201,168,76,0.15); }
-  .chat-header-left { display: flex; align-items: center; gap: 0.6rem; }
-  .chat-dot { width: 8px; height: 8px; background: #4ade80; border-radius: 50%; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .chat-header span { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 0.1em; color: var(--gold); }
-  .chat-close { background: none; border: none; color: var(--slate); cursor: pointer; font-size: 1.1rem; padding: 0.2rem; transition: color 0.2s; }
+
+  .chat-header {
+    background: rgba(13,18,32,0.8);
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(201,168,76,0.15);
+  }
+
+  .chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .chat-dot {
+    width: 8px; height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .chat-header span {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 0.1em;
+    color: var(--gold);
+  }
+
+  .chat-close {
+    background: none;
+    border: none;
+    color: var(--slate);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.2rem;
+    transition: color 0.2s;
+  }
+
   .chat-close:hover { color: var(--parchment); }
-  #chat-messages { height: 260px; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+
+  #chat-messages {
+    height: 260px;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
   #chat-messages::-webkit-scrollbar { width: 4px; }
+  #chat-messages::-webkit-scrollbar-track { background: transparent; }
   #chat-messages::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.3); border-radius: 2px; }
-  .msg { max-width: 85%; padding: 0.65rem 0.9rem; border-radius: 8px; font-size: 0.82rem; line-height: 1.5; }
-  .msg-aria { background: rgba(13,18,32,0.6); border: 1px solid rgba(139,163,201,0.15); color: var(--parchment); align-self: flex-start; }
-  .msg-user { background: var(--gold); color: var(--midnight); font-weight: 500; align-self: flex-end; }
-  .chat-input-row { display: flex; border-top: 1px solid rgba(201,168,76,0.12); }
-  #chat-input { flex: 1; background: transparent; border: none; color: var(--parchment); padding: 0.85rem 1rem; font-family: 'IBM Plex Sans', sans-serif; font-size: 0.85rem; outline: none; }
+
+  .msg {
+    max-width: 85%;
+    padding: 0.65rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .msg-aria {
+    background: rgba(13,18,32,0.6);
+    border: 1px solid rgba(139,163,201,0.15);
+    color: var(--parchment);
+    align-self: flex-start;
+  }
+
+  .msg-user {
+    background: var(--gold);
+    color: var(--midnight);
+    font-weight: 500;
+    align-self: flex-end;
+  }
+
+  .chat-input-row {
+    display: flex;
+    border-top: 1px solid rgba(201,168,76,0.12);
+  }
+
+  #chat-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--parchment);
+    padding: 0.85rem 1rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.85rem;
+    outline: none;
+  }
+
   #chat-input::placeholder { color: rgba(139,163,201,0.5); }
-  #chat-send { background: var(--gold); border: none; color: var(--midnight); padding: 0.85rem 1.1rem; cursor: pointer; font-size: 1rem; transition: background 0.2s; font-weight: 700; }
+
+  #chat-send {
+    background: var(--gold);
+    border: none;
+    color: var(--midnight);
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.2s;
+    font-weight: 700;
+  }
+
   #chat-send:hover { background: var(--gold-light); }
-  footer { border-top: 1px solid rgba(139,163,201,0.1); padding: 3rem 2rem; text-align: center; position: relative; z-index: 1; }
-  .footer-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; letter-spacing: 0.12em; color: var(--gold); margin-bottom: 0.5rem; }
-  footer p { font-size: 0.8rem; color: var(--slate); margin-bottom: 1.5rem; }
-  .footer-links { display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; }
-  .footer-links a { font-size: 0.8rem; color: var(--slate); text-decoration: none; transition: color 0.2s; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid rgba(139,163,201,0.1);
+    padding: 3rem 2rem;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .footer-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+    margin-bottom: 0.5rem;
+  }
+
+  footer p {
+    font-size: 0.8rem;
+    color: var(--slate);
+    margin-bottom: 1.5rem;
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .footer-links a {
+    font-size: 0.8rem;
+    color: var(--slate);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
   .footer-links a:hover { color: var(--gold); }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-  @media (max-width: 600px) { .nav-links { display: none; } #chat-box { width: calc(100vw - 3rem); } }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 600px) {
+    .nav-links { display: none; }
+    #chat-box { width: calc(100vw - 3rem); }
+  }
 </style>
 </head>
 <body>
+
+<!-- NAV -->
 <nav>
   <a href="/home" class="nav-logo">ARIA</a>
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
-    <a href="https://discord.gg/bVTKZqpR" target="_blank">Community</a>
+    <a href="https://discord.gg/yHczuBG8c6" target="_blank">Community</a>
     <a href="/index.html" class="btn-nav">Launch App →</a>
   </div>
 </nav>
+
+<!-- HERO -->
 <section class="hero">
   <div class="hero-glow"></div>
   <p class="hero-eyebrow">Powered by Anthropic Claude · Built for real work</p>
@@ -115,67 +623,115 @@
     <a href="#pricing" class="btn-secondary">See Pricing</a>
   </div>
 </section>
+
 <hr class="divider">
+
+<!-- FEATURES -->
 <section class="section" id="features">
   <p class="section-label">What ARIA Does</p>
   <h2 class="section-title">Four Modes.<br>One Assistant.</h2>
   <p class="section-desc">Purpose-built modes that handle your most time-consuming admin tasks — fast.</p>
   <div class="features-grid">
-    <div class="feature-card"><div class="feature-icon">✉️</div><h3>Email</h3><p>Draft, reframe, and polish emails in seconds. Professional tone, zero effort.</p></div>
-    <div class="feature-card"><div class="feature-icon">📅</div><h3>Schedule</h3><p>Plan your day, organize meetings, and surface conflicts before they happen.</p></div>
-    <div class="feature-card"><div class="feature-icon">📝</div><h3>Summarize</h3><p>Paste anything — docs, threads, notes — and get a clear, concise summary instantly.</p></div>
-    <div class="feature-card"><div class="feature-icon">💬</div><h3>General</h3><p>Your all-purpose AI layer. Ask anything, get smart answers, stay in flow.</p></div>
+    <div class="feature-card">
+      <div class="feature-icon">✉️</div>
+      <h3>Email</h3>
+      <p>Draft, reframe, and polish emails in seconds. Professional tone, zero effort.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📅</div>
+      <h3>Schedule</h3>
+      <p>Plan your day, organize meetings, and surface conflicts before they happen.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📝</div>
+      <h3>Summarize</h3>
+      <p>Paste anything — docs, threads, notes — and get a clear, concise summary instantly.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">💬</div>
+      <h3>General</h3>
+      <p>Your all-purpose AI layer. Ask anything, get smart answers, stay in flow.</p>
+    </div>
   </div>
 </section>
+
 <hr class="divider">
+
+<!-- PRICING -->
 <section class="section" id="pricing">
   <p class="section-label">Simple Pricing</p>
   <h2 class="section-title">Start Free.<br>Scale When Ready.</h2>
   <div class="pricing-grid">
+
+    <!-- Free -->
     <div class="price-card">
       <p class="price-tier">Free</p>
       <div class="price-amount"><sup>$</sup>0</div>
       <span class="price-period">forever</span>
       <ul class="price-features">
-        <li>20 messages / day</li><li>All 4 AI modes</li><li>Standard response speed</li><li>No credit card required</li>
+        <li>20 messages / day</li>
+        <li>All 4 AI modes</li>
+        <li>Standard response speed</li>
+        <li>No credit card required</li>
       </ul>
       <a href="/index.html" class="btn-secondary" style="display:block;text-align:center;padding:0.8rem;">Start Free</a>
     </div>
+
+    <!-- Early Supporter -->
     <div class="price-card featured">
       <p class="price-tier">Early Supporter</p>
       <div class="price-amount"><sup>$</sup>7</div>
       <span class="price-period">per month</span>
       <ul class="price-features">
-        <li>200 messages / day</li><li>All 4 AI modes</li><li>Priority response speed</li><li>Supporter badge</li><li>Lock in founder pricing</li>
+        <li>200 messages / day</li>
+        <li>All 4 AI modes</li>
+        <li>Priority response speed</li>
+        <li>Supporter badge</li>
+        <li>Lock in founder pricing</li>
       </ul>
       <a href="#" class="btn-primary" style="display:block;text-align:center;padding:0.8rem;" onclick="alert('Payments coming soon! Sign up free and we\'ll notify you.')">Get Early Access</a>
     </div>
+
+    <!-- Pro -->
     <div class="price-card">
       <p class="price-tier">Pro</p>
       <div class="price-amount"><sup>$</sup>12</div>
       <span class="price-period">per month</span>
       <ul class="price-features">
-        <li>Unlimited messages</li><li>Advanced Claude Sonnet model</li><li>All 4 AI modes</li><li>Pro badge + priority support</li><li>Early access to new features</li>
+        <li>Unlimited messages</li>
+        <li>Advanced Claude Sonnet model</li>
+        <li>All 4 AI modes</li>
+        <li>Pro badge + priority support</li>
+        <li>Early access to new features</li>
       </ul>
       <a href="#" class="btn-primary" style="display:block;text-align:center;padding:0.8rem;" onclick="alert('Payments coming soon! Sign up free and we\'ll notify you.')">Go Pro</a>
     </div>
+
   </div>
 </section>
+
 <hr class="divider">
+
+<!-- FOOTER -->
 <footer>
   <div class="footer-logo">ARIA</div>
   <p>Built by Reliable Workflow · Powered by Anthropic Claude</p>
   <div class="footer-links">
     <a href="/index.html">Launch App</a>
-    <a href="https://discord.gg/bVTKZqpR" target="_blank">Discord</a>
+    <a href="https://discord.gg/yHczuBG8c6" target="_blank">Discord</a>
     <a href="https://wes1504562.substack.com" target="_blank">Substack</a>
     <a href="#pricing">Pricing</a>
   </div>
 </footer>
+
+<!-- CHAT WIDGET -->
 <div id="chat-widget">
   <div id="chat-box">
     <div class="chat-header">
-      <div class="chat-header-left"><div class="chat-dot"></div><span>ARIA</span></div>
+      <div class="chat-header-left">
+        <div class="chat-dot"></div>
+        <span>ARIA</span>
+      </div>
       <button class="chat-close" onclick="toggleChat()">✕</button>
     </div>
     <div id="chat-messages">
@@ -188,36 +744,62 @@
   </div>
   <button id="chat-toggle" onclick="toggleChat()" title="Chat with ARIA">🤖</button>
 </div>
+
 <script>
   function toggleChat() {
     const box = document.getElementById('chat-box');
     box.classList.toggle('open');
-    if (box.classList.contains('open')) document.getElementById('chat-input').focus();
+    if (box.classList.contains('open')) {
+      document.getElementById('chat-input').focus();
+    }
   }
-  document.getElementById('chat-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') sendChat(); });
+
+  document.getElementById('chat-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') sendChat();
+  });
+
   async function sendChat() {
     const input = document.getElementById('chat-input');
     const msgs = document.getElementById('chat-messages');
     const text = input.value.trim();
     if (!text) return;
+
+    // User message
     const userMsg = document.createElement('div');
     userMsg.className = 'msg msg-user';
     userMsg.textContent = text;
     msgs.appendChild(userMsg);
     input.value = '';
     msgs.scrollTop = msgs.scrollHeight;
+
+    // Thinking indicator
     const thinking = document.createElement('div');
     thinking.className = 'msg msg-aria';
     thinking.textContent = 'Thinking...';
     msgs.appendChild(thinking);
     msgs.scrollTop = msgs.scrollHeight;
+
     try {
-      const res = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, mode: 'general', history: [] }) });
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          mode: 'general',
+          history: []
+        })
+      });
       const data = await res.json();
-      thinking.textContent = typeof data.content === 'string' ? data.content : (data.content?.map?.(b => b.text || '').join('') || 'Sorry, something went wrong.');
-    } catch { thinking.textContent = 'Unable to connect. Try the full app!'; }
+      const reply = typeof data.content === 'string'
+        ? data.content
+        : (data.content?.map?.(b => b.text || '').join('') || 'Sorry, something went wrong.');
+      thinking.textContent = reply;
+    } catch {
+      thinking.textContent = 'Unable to connect. Try the full app!';
+    }
     msgs.scrollTop = msgs.scrollHeight;
   }
 </script>
+
 </body>
 </html>
