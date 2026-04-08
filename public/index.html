@@ -272,7 +272,8 @@ body{font-family:'Geist',sans-serif;background:var(--cream);color:var(--ink);dis
       <div class="sh-lbl"><div class="sh-lbl-main">Subscribe to Updates</div><div class="sh-lbl-sub">Get notified when new features ship</div></div>
       <div class="sh-arr">›</div>
     </div>
-    <div class="sh-row" onclick="window.open('https://discord.gg/bVTKZqpR','_blank');closeSh()">
+    <!-- FIX: Discord link updated to new permanent invite -->
+    <div class="sh-row" onclick="window.open('https://discord.gg/yHczuBG8c6','_blank');closeSh()">
       <div class="sh-ico">💬</div>
       <div class="sh-lbl"><div class="sh-lbl-main">Join our Discord</div><div class="sh-lbl-sub">Community + direct feedback channel</div></div>
       <div class="sh-arr">›</div>
@@ -328,8 +329,6 @@ const M={
 };
 let mode='email',hist=[],count=0,busy=false,user=null,plan='pro';
 const SK='aria_s',UK='aria_u',HK='aria_h';
-
-// Save/load conversation history
 function saveHist(){
   if(!user) return;
   const isPro = user.pro || isProUser(user.email);
@@ -342,17 +341,13 @@ function loadHist(){
   try{
     const stored = JSON.parse(localStorage.getItem(HK+'_'+user.email)||'null');
     if(!stored) return;
-    // Only restore if less than 24 hours old
     if(Date.now() - stored.ts > 24*60*60*1000){ localStorage.removeItem(HK+'_'+user.email); return; }
     hist = stored.hist || [];
     if(stored.mode && stored.mode !== mode){ mode = stored.mode; setMode(mode, true); }
-    // Replay messages into UI
     hist.forEach(m => addMsg(m.role, m.content, true));
   }catch(e){}
 }
-function clearHistStorage(){
-  if(user) localStorage.removeItem(HK+'_'+user.email);
-}
+function clearHistStorage(){ if(user) localStorage.removeItem(HK+'_'+user.email); }
 function getU(){try{return JSON.parse(localStorage.getItem(UK)||'{}')}catch{return{}}}
 function saveU(u){localStorage.setItem(UK,JSON.stringify(u))}
 function showTab(t){
@@ -549,7 +544,6 @@ renderChips();
 let deferredPrompt=null;
 if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').then(reg=>{
     console.log('ARIA SW registered');
-    // Listen for new version messages from service worker
     navigator.serviceWorker.addEventListener('message', e => {
       if (e.data?.type === 'CACHE_UPDATED') {
         toast('✨ App updated! Reloading...');
