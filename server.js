@@ -111,9 +111,7 @@ app.post('/api/signup', async (req, res) => {
   const ts = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
   signups.push({ name, email, joined: new Date().toISOString(), ts });
   console.log(`NEW SIGNUP — ${name} | ${email} | ${ts}`);
-  // Write to Supabase
   await sbInsert('users', { name, email, joined: new Date().toISOString(), pro: false });
-  // Write to Google Sheets
   const webhook = process.env.SHEETS_WEBHOOK;
   if (webhook) {
     fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -457,8 +455,6 @@ tr:last-child td{border:none}
     <button class="tab-btn" onclick="ccTab('ai')">AI Tools</button>
     <button class="tab-btn" onclick="ccTab('errors')">Errors</button>
   </div>
-
-  <!-- OVERVIEW -->
   <div class="tab-content active" id="cc-overview">
     <div class="sgrid">
       <div class="stat"><div class="sval" id="cc-total">0</div><div class="slbl">Total Users</div></div>
@@ -471,8 +467,6 @@ tr:last-child td{border:none}
       <div class="panel"><div class="ptitle">Recent Signups</div><div class="psub">Latest 5 members</div><div id="cc-recent"></div></div>
     </div>
   </div>
-
-  <!-- AGENT -->
   <div class="tab-content" id="cc-agent">
     <div class="sgrid" style="margin-bottom:16px">
       <div class="stat"><div class="sval" id="cc-agent-total">0</div><div class="slbl">Total Actions</div></div>
@@ -498,8 +492,6 @@ tr:last-child td{border:none}
       <table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Joined</th></tr></thead><tbody id="cc-table"></tbody></table>
     </div>
   </div>
-
-  <!-- VISITORS -->
   <div class="tab-content" id="cc-visitors">
     <div class="sgrid">
       <div class="stat"><div class="sval" id="cc-vtotal">0</div><div class="slbl">Total Visits</div></div>
@@ -517,8 +509,6 @@ tr:last-child td{border:none}
       <div id="cc-vrecent"></div>
     </div>
   </div>
-
-  <!-- AI TOOLS -->
   <div class="tab-content" id="cc-ai">
     <div class="g2">
       <div class="panel"><div class="ptitle">Feature Suggestions</div><div class="psub">AI product advice</div><button class="abtn" id="featBtn" onclick="ccAI('features','featBtn','featOut','featCopy')">Generate</button><div class="aout" id="featOut"></div><button class="cbtn" id="featCopy" onclick="ccCopy('featOut','featCopy')">Copy</button></div>
@@ -530,12 +520,9 @@ tr:last-child td{border:none}
     </div>
     <div class="panel"><div class="ptitle">Shareholder Report</div><div class="psub">Weekly summary</div><button class="abtn" id="shareBtn" onclick="ccAI('shareholder','shareBtn','shareOut','shareCopy')">Generate</button><div class="aout" id="shareOut"></div><button class="cbtn" id="shareCopy" onclick="ccCopy('shareOut','shareCopy')">Copy</button></div>
   </div>
-
-  <!-- ERRORS -->
   <div class="tab-content" id="cc-errors">
     <div class="panel"><div class="ptitle">Error Monitor</div><div class="psub">Last 10 server errors</div><div id="cc-errors-feed"></div></div>
   </div>
-
   <div class="rtime" id="cc-refresh">Loading...</div>
 </div>
 <script>
@@ -641,7 +628,6 @@ setInterval(()=>{if(ccToken)ccLoad();},60000);
 </body></html>`));
 
 /* ── Deploy Panel ── */
-
 app.get('/deploy-panel', (_req, res) => res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -758,31 +744,6 @@ dpHealth();
 </script>
 </body></html>`));
 
-/* ── Claude proxy ── */
-app.post('/api/chat', async (req, res) => {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || 'unknown';
-  if (rateLimit(ip)) return res.status(429).json({ error: 'Too many requests.' });
-  const { messages, system, userEmail, isPro } = req.body;
-  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: 'messages array is required.' });
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Add ANTHROPIC_API_KEY in Render environment variables.' });
-  const model = getModel(userEmail, isPro);
-  console.log(`CHAT [${model.includes('sonnet')?'Pro':'Free'}] ${userEmail||'anon'}`);
-  try {
-    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 1024, system: system || '', messages })
-    });
-    const data = await upstream.json();
-    if (data.error) return res.status(400).json({ error: data.error.message });
-    res.json({ ...data, tier: model.includes('sonnet') ? 'Pro' : 'Free' });
-  } catch(err) {
-    console.error('[proxy] failed to reach Anthropic');
-    res.status(502).json({ error: 'Could not reach AI. Please try again.' });
-  }
-});
-
 /* ── SPA fallback ── */
 app.get('*', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -790,7 +751,6 @@ app.get('*', (_req, res) => {
   res.setHeader('Expires', '0');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-
 
 /* ── Start server ── */
 setupSupabase();
